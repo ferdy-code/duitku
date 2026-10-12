@@ -18,8 +18,20 @@ dependencies = [
     "pydantic==2.14.1",
     "pydantic-settings==2.15.0",
     "python-telegram-bot==22.8",
+    "sentence-transformers==6.1.0",
     "sqlalchemy[asyncio]==2.1.4",
+    # Direct dep only so [tool.uv.sources] can route it to the CPU wheel index (see below).
+    "torch==2.14.1",
 ]
+
+# Linux: CPU-only torch (PyPI default pulls multi-GB CUDA libs). The app only embeds short texts.
+[tool.uv.sources]
+torch = { index = "pytorch-cpu", marker = "sys_platform == 'linux'" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [build-system]
 requires = ["uv_build>=0.12.18,<0.13.0"]
@@ -57,5 +69,8 @@ venv = ".venv"
 testpaths = ["tests"]
 asyncio_mode = "auto"
 pythonpath = ["."]  # lets tests import sibling helpers as `tests.evals.*` (importlib mode adds nothing)
-addopts = "--import-mode=importlib -m 'not eval'"
-markers = ["eval: real-LLM eval cases (needs LLM_API_KEY); run with `pytest -m eval`"]
+addopts = "--import-mode=importlib -m 'not eval and not embedding'"
+markers = [
+    "eval: real-LLM eval cases (needs LLM_API_KEY); run with `pytest -m eval`",
+    "embedding: real embedding model (downloads ~470MB from HuggingFace); run with `pytest -m embedding`",
+]
