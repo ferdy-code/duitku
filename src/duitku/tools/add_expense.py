@@ -35,7 +35,8 @@ AmountText = Annotated[
 
 DESCRIPTION = (
     "Save ONE expense. Pass the amount exactly as the user wrote it ('35rb', '1,5 juta', "
-    "'Rp 35.000'); it is parsed for you, never convert it yourself. category is a slug "
+    "'Rp 35.000'); it is parsed for you, never convert it yourself or add a unit the user did not "
+    "write (a bare '1.5' stays '1.5'). category is a slug "
     "(makan-minum, transport, belanja, tagihan, hiburan, kesehatan, pendidikan, lainnya). "
     "occurred_on (YYYY-MM-DD) defaults to today in the user's timezone. "
     "Example: amount='35rb', category='makan-minum', merchant='Warteg Bahari'."

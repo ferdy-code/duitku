@@ -17,11 +17,16 @@ from psycopg import sql
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-# Config requires LLM vars at load time; DB tests do not use them. Real values win if set.
-os.environ.setdefault("LLM_BASE_URL", "http://unused.invalid/v1")
-os.environ.setdefault("LLM_API_KEY", "unused")
+from duitku.config import ConfigError, get_settings, load_settings
 
-from duitku.config import get_settings
+# Config requires LLM vars at load time; DB tests do not use them. Dummies only when NOTHING
+# (env or .env) provides them: an env var beats .env, so unconditional dummies would hijack the
+# real LLM settings that `pytest -m eval` reads from the same process.
+try:
+    load_settings()
+except ConfigError:
+    os.environ.setdefault("LLM_BASE_URL", "http://unused.invalid/v1")
+    os.environ.setdefault("LLM_API_KEY", "unused")
 from duitku.db.engine import make_engine, make_sessionmaker
 
 ROOT = Path(__file__).resolve().parents[2]

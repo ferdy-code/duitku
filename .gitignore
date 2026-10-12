@@ -9,3 +9,4 @@ __pycache__/
 .pyright/
 *.egg-info/
 dist/
+tests/evals/results/

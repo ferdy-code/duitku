@@ -56,5 +56,6 @@ venv = ".venv"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+pythonpath = ["."]  # lets tests import sibling helpers as `tests.evals.*` (importlib mode adds nothing)
 addopts = "--import-mode=importlib -m 'not eval'"
 markers = ["eval: real-LLM eval cases (needs LLM_API_KEY); run with `pytest -m eval`"]

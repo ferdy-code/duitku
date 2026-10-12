@@ -52,7 +52,7 @@ Goal: understand tool calling from first principles before using a framework.
   Read: `interfaces-ops.md`. AC: multi-turn chat works; `--verbose` shows tool calls + observations.
 - [x] **T-206 More tools.** `update_expense`, `get_exchange_rate` (external API, cache, timeout, retry-once). *`get_exchange_rate` is P1 in PRD but built here to practice calling external APIs.*
   Read: `tools.md`. AC: HTTP-mocked tests (success, timeout, malformed); "change the last one to 40rb" updates the correct expense (R-05).
-- [ ] **T-207 Eval harness v0.** `tests/evals/runner.py` + cases E-01…E-10 via `pytest -m eval`; report pass rate, avg steps, tokens.
+- [x] **T-207 Eval harness v0.** `tests/evals/runner.py` + cases E-01…E-10 via `pytest -m eval`; report pass rate, avg steps, tokens.
   Read: `EVALS.md`. AC: fresh DB per case; asserts on DB effects + tool-call order; baseline score logged in `DECISIONS.md`.
 
 **Gate (end of Phase 2):** baseline ≥ 80% on E-01…E-10; otherwise fix tool descriptions/prompt first.

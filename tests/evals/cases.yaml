@@ -1,0 +1,104 @@
+# Eval cases E-01..E-10 (docs/EVALS.md). Clock is pinned to Monday 2026-10-12 10:00 Asia/Jakarta.
+# String args_contains = case-insensitive substring. max_steps counts model calls over all turns.
+
+- id: E-01
+  tags: [tool_selection, parsing]
+  turns: [{user: "makan siang 35rb di warteg"}]
+  expect:
+    tool_calls:
+      - {name: add_expense, args_contains: {amount: "35rb", category: "makan-minum"}}
+    db:
+      expenses_count: 1
+      expense: {amount_idr: 35000, category_slug: makan-minum, occurred_on: "2026-10-12"}
+    max_steps: 3
+
+- id: E-02
+  tags: [tool_selection, dates]
+  turns: [{user: "gojek ke kantor 22k kemarin"}]
+  expect:
+    tool_calls:
+      - {name: add_expense, args_contains: {amount: "22k", category: "transport"}}
+    db:
+      expenses_count: 1
+      expense: {amount_idr: 22000, category_slug: transport, occurred_on: "2026-10-11"}
+    max_steps: 3
+
+- id: E-03
+  tags: [tool_selection, parsing]
+  turns: [{user: "beli headphone 1,5 juta di tokopedia"}]
+  expect:
+    tool_calls:
+      - {name: add_expense, args_contains: {category: "belanja"}}
+    db:
+      expenses_count: 1
+      expense: {amount_idr: 1500000, category_slug: belanja, merchant_contains: "tokopedia"}
+    max_steps: 3
+
+- id: E-04
+  tags: [tool_selection, dates]
+  turns: [{user: "bayar listrik Rp 350.000 tanggal 5"}]
+  expect:
+    tool_calls:
+      - {name: add_expense, args_contains: {category: "tagihan"}}
+    db:
+      expenses_count: 1
+      expense: {amount_idr: 350000, category_slug: tagihan, occurred_on: "2026-10-05"}
+    max_steps: 3
+
+- id: E-05
+  tags: [tool_selection, query]
+  seed: {fixture: sample_month}
+  turns: [{user: "hari ini total pengeluaranku berapa?"}]
+  expect:
+    tool_calls:
+      - {name: resolve_period, args_contains: {period: "today"}}
+      - {name: query_expenses}
+    no_tool_calls: [add_expense]
+    reply_total_of_range: ["2026-10-12", "2026-10-12"]
+    max_steps: 4
+
+- id: E-06
+  tags: [ambiguity]
+  turns: [{user: "5 ribu"}]
+  expect:
+    no_tool_calls: [add_expense]
+    db: {expenses_count: 0}
+    reply_asks: true
+    max_steps: 3
+
+- id: E-07
+  tags: [ambiguity, error_handling]
+  turns: [{user: "kopi 1.5"}]
+  expect:
+    db: {expenses_count: 0}
+    reply_asks: true
+    max_steps: 4
+
+- id: E-08
+  tags: [ambiguity, error_handling]
+  turns: [{user: "beli sepatu 0 rupiah"}]
+  expect:
+    db: {expenses_count: 0}
+    max_steps: 4
+
+- id: E-09
+  tags: [ambiguity, error_handling]
+  turns: [{user: "bayar kos 5m"}]
+  expect:
+    db: {expenses_count: 0}
+    reply_asks: true
+    reply_contains_any: ["juta", "miliar"]
+    max_steps: 4
+
+# The category list in the prompt already lacks `kesehatan`, so the model normally never hits
+# UNKNOWN_CATEGORY; the case checks the end state: no crash, <= 2 attempts, a valid row or a question.
+- id: E-10
+  tags: [error_handling]
+  seed: {remove_categories: [kesehatan]}
+  turns: [{user: "beli obat di apotek 50rb"}]
+  expect:
+    max_calls: {add_expense: 2}
+    db:
+      expenses_count: [0, 1]
+      expense: {amount_idr: 50000}
+    max_steps: 5
