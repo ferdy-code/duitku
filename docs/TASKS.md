@@ -35,7 +35,7 @@ Goal: understand tool calling from first principles before using a framework.
   Read: `tools.md`. AC: unexpected exception → generic `INTERNAL_ERROR`; validation failure → `INVALID_ARGUMENT` with `hint`.
 - [x] **T-104 Core tools.** `add_expense`, `query_expenses`, `resolve_period` (tool), including `idempotency_key`.
   Read: `tools.md`, `data-model.md`. AC: same `tool_call_id` twice → one row; every `group_by` matches reference SQL.
-- [ ] **T-105 Manual loop experiment.** `experiments/01_manual_loop.py`: tool-calling loop with the OpenAI-compatible Chat Completions API directly (`openai` SDK, no LangGraph, `base_url` from config) using the T-104 tools: send → read `message.tool_calls` → execute → send `role:"tool"` message with `tool_call_id` → repeat until `finish_reason != "tool_calls"`.
+- [x] **T-105 Manual loop experiment.** `experiments/01_manual_loop.py`: tool-calling loop with the OpenAI-compatible Chat Completions API directly (`openai` SDK, no LangGraph, `base_url` from config) using the T-104 tools: send → read `message.tool_calls` → execute → send `role:"tool"` message with `tool_call_id` → repeat until `finish_reason != "tool_calls"`.
   AC: handles "makan siang 35rb di warteg" then "total hari ini berapa?" correctly; `DECISIONS.md` notes message format, `tool_calls`↔`role:"tool"` pairing, stop condition.
 
 ## Phase 2 — LangGraph ReAct + short-term memory + CLI
