@@ -48,3 +48,9 @@ Added `opentelemetry-exporter-otlp-proto-http` next to `opentelemetry-sdk` (the 
 - The originals had no `ON DELETE` action (NO ACTION), so none is added: no `SET NULL (col)` column-list form is needed. `receipts.id` deletion while referenced is still refused. Default MATCH SIMPLE keeps `receipt_id NULL` valid (`user_id` is NOT NULL, so only `receipt_id` can opt out of the check). Deleting a user still cascades (all rows go in one statement; NO ACTION is checked at statement end).
 - Cost: one extra unique index per target table. Downgrade restores the exact 0001 constraints and names. Models mirror it with `ForeignKeyConstraint`; `compare_metadata` stays empty. `data-model.md` DDL updated to the final state.
 - Apply to dev DB manually: `uv run alembic upgrade head` (not run by the agent).
+
+## 2026-10-12 — T-101 — parse_idr_amount
+- API: `parse_idr_amount(text) -> int`, raises `AmountError(code, message, hint)`. tools.md says both `-> int` and "error with a hint", so we raise: `domain` stays independent of the tool envelope, and the tool layer maps the exception to `{"ok": false, ...}`.
+- Two codes: `AMBIGUOUS_AMOUNT` (could mean two amounts: `1.5`, `5m`, mixed separators, fractional rupiah) and `INVALID_AMOUNT` (zero, negative, > 10 billion, empty, no digits). `INVALID_AMOUNT` is new; the spec had no code for these. The agent asks the user to confirm in both cases, never guesses.
+- No floats: `Decimal`/`int` only. With a multiplier (`rb`, `k`, `juta`, `jt`) `.` and `,` are decimal separators (`1,5 juta` = 1,500,000). Without one, only groups of exactly 3 digits with one repeated separator count as thousands (`35.000`).
+- Footgun: `1.500rb` reads as 1,500 (follows the spec). Mention it in the tool description or prompt.

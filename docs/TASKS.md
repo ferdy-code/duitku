@@ -27,7 +27,7 @@ Work sequentially by phase, one task at a time. Tick `[x]` only when ALL accepta
 
 Goal: understand tool calling from first principles before using a framework.
 
-- [ ] **T-101 `parse_idr_amount`.** `domain/money.py` per `tools.md`. ≥25 parametrized cases: `35rb`, `35k`, `35 ribu`, `1,5 juta`, `2.5jt`, `Rp 1.250.000`, `35.000`, `1.5` (ambiguous), `0`, `-5rb`, `5m` (error), garbage.
+- [x] **T-101 `parse_idr_amount`.** `domain/money.py` per `tools.md`. ≥25 parametrized cases: `35rb`, `35k`, `35 ribu`, `1,5 juta`, `2.5jt`, `Rp 1.250.000`, `35.000`, `1.5` (ambiguous), `0`, `-5rb`, `5m` (error), garbage.
   Read: `tools.md`. AC: all pass; ambiguous input returns `AMBIGUOUS_AMOUNT`, never a guess.
 - [ ] **T-102 `resolve_period`.** `domain/periods.py`, TZ-aware, Monday-start weeks, injected `now`.
   Read: `tools.md`. AC: tests cover month/year rollover, leap February, no direct `datetime.now()` in logic.
