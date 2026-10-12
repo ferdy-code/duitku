@@ -40,17 +40,17 @@ Goal: understand tool calling from first principles before using a framework.
 
 ## Phase 2 — LangGraph ReAct + short-term memory + CLI
 
-- [ ] **T-201 State + prompt builder.** `agent/state.py`, `agent/prompts.py`.
+- [x] **T-201 State + prompt builder.** `agent/state.py`, `agent/prompts.py`.
   Read: `agent.md`. AC: no placeholders left unfilled; empty memories still valid.
 - [ ] **T-202 Graph v1.** `agent/{graph,nodes,routing}.py`: `agent ↔ tools` only (no approval/memory yet), `MAX_AGENT_STEPS`, `GraphRecursionError` handling.
   Read: `agent.md`. AC: fake-model test: loop stops at step cap; ToolMessage invariant holds.
 - [ ] **T-203 Postgres checkpointer.** `AsyncPostgresSaver` + pool, `setup()` at startup.
   Read: `agent.md`. AC: second message in same thread sees the first; different threads isolated; history survives process restart.
-- [ ] **T-204 History trimming.** `agent/trimming.py`.
+- [x] **T-204 History trimming.** `agent/trimming.py`.
   Read: `agent.md`. AC: trimmed view never starts with an orphan ToolMessage or splits a tool_calls↔ToolMessage pair; stored state unchanged.
 - [ ] **T-205 CLI.** `interfaces/runner.py` + `interfaces/cli.py`.
   Read: `interfaces-ops.md`. AC: multi-turn chat works; `--verbose` shows tool calls + observations.
-- [ ] **T-206 More tools.** `update_expense`, `get_exchange_rate` (external API, cache, timeout, retry-once). *`get_exchange_rate` is P1 in PRD but built here to practice calling external APIs.*
+- [x] **T-206 More tools.** `update_expense`, `get_exchange_rate` (external API, cache, timeout, retry-once). *`get_exchange_rate` is P1 in PRD but built here to practice calling external APIs.*
   Read: `tools.md`. AC: HTTP-mocked tests (success, timeout, malformed); "change the last one to 40rb" updates the correct expense (R-05).
 - [ ] **T-207 Eval harness v0.** `tests/evals/runner.py` + cases E-01…E-10 via `pytest -m eval`; report pass rate, avg steps, tokens.
   Read: `EVALS.md`. AC: fresh DB per case; asserts on DB effects + tool-call order; baseline score logged in `DECISIONS.md`.

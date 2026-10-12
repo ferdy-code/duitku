@@ -14,7 +14,13 @@ def test_period_literal_matches_domain() -> None:
 
 def test_registry_schemas_hide_injected_args() -> None:
     tools = {t.name: t for t in build_tools()}
-    assert set(tools) == {"add_expense", "query_expenses", "resolve_period"}
+    assert set(tools) == {
+        "add_expense",
+        "query_expenses",
+        "resolve_period",
+        "update_expense",
+        "get_exchange_rate",
+    }
     for t in tools.values():
         assert not {"config", "tool_call_id", "user_id", "timezone"} & set(t.args)
         assert "Example" in t.description  # evals depend on example args in descriptions

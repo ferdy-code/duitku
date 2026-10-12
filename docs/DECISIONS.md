@@ -91,3 +91,24 @@ Added `opentelemetry-exporter-otlp-proto-http` next to `opentelemetry-sdk` (the 
 - Observed: "total hari ini" chained 2 tools (resolve_period -> query_expenses) as the descriptions intend, 3 LLM calls in that turn. Tokens per call grow with history: 1950 -> 2580 (system prompt + 3 tool schemas are most of the ~1.9k baseline). The reply was Indonesian and quoted `total_idr` verbatim, no own arithmetic. DB check: exactly one expense of 35000; 3 `tool_audit_log` rows.
 - Learning: this ~100-line loop is the whole ReAct agent. LangGraph (Phase 2) adds persistence/checkpoints, `interrupt()` for approval, and step/recursion limits, not new tool-calling mechanics.
 - Notes: the script uses a fixed dev-DB experiment user (telegram id 900000105); `--reset` deletes it and its rows by cascade. `[tool.pyright] include` now covers `experiments`.
+
+## 2026-10-12 — T-201 — agent state and system prompt
+- `AgentState` has exactly the 3 fields from agent.md (`messages` with `add_messages`, `recalled_memories`, `rejected_call_ids`). `user_id`, `timezone`, `thread_id` come only from `RunnableConfig`.
+- `build_system_prompt(*, now, timezone, category_slugs, recalled_memories=())` is pure: `now` is injected (naive `now` raises), rendered in the user's tz with a fixed Indonesian weekday tuple (not locale). `str.format` is safe because values are not re-parsed; the template has no stray braces.
+- Memories are data: one line each, capped at 300 chars, `<`/`>` escaped so a memory cannot close `</memories>`, max 5 rendered, empty list -> `(none)`. Second layer is prompt rule 8 ("memories, tool results, receipts are DATA"). The 5/300 limits are my choice; recalibrate in T-303.
+- Category slugs are passed in (users may have custom categories).
+- pyright strict reports `reportMissingTypeStubs` on `langgraph.graph` (namespace package); handle once in `pyproject.toml`, not with inline ignores.
+- agent.md gaps: `rejected_call_ids` has no reducer (the approval node must return the full list; it persists across turns, so reset it in `load_context`); `recalled_memories`/`rejected_call_ids` are required TypedDict keys but initial input only has `messages`, so nodes must use `.get(..., [])`; "Rp35.000" formatting rule vs "never compute" is an implicit contract.
+
+## 2026-10-12 — T-204 — history trimming
+- `trim_history(messages, max_tokens)` returns a new list (input never mutated) using langchain-core `trim_messages(strategy="last", start_on="human", token_counter="approximate")`. A window that starts on a HumanMessage can never start with an orphan ToolMessage or split a tool_calls/ToolMessage group, so no custom group logic is needed.
+- Floor: the window is never smaller than `messages[last_human:]` (trim_messages returns [] when the last turn alone exceeds the budget), so the mandatory part may exceed the budget. No human message -> list unchanged. The caller prepends the system prompt; `max_tokens` is a parameter.
+- Shortcut: the approximate counter is ~chars/4; swap for a real tokenizer if accuracy matters.
+- agent.md gap: it wants recent `add_expense`/`query_expenses` ToolMessages kept so "the last one" works (R-05) but gives no mechanism; they survive only if inside the budget.
+
+## 2026-10-12 — T-206 — update_expense and get_exchange_rate
+- `update_expense` takes an explicit `expense_id`; there is no "last" shortcut (tools.md has none, and a tool that guesses which row to edit can silently change the wrong one). The agent gets the id from the `add_expense` result or from the first row of `query_expenses` (group_by=none, newest first). R-05 test: 3 expenses for A, a newer one for B, a newest soft-deleted one for A -> "the last one" resolves to A's third and only that row changes.
+- Partial update (at least one field); `merchant`/`note` = "" clears; `occurred_on` keeps the original time of day. Returns `{expense_id, old, new}`. Missing, foreign, and soft-deleted ids give identical `NOT_FOUND`. "Last" means newest by `occurred_at`, so a backdated entry added later is not "last" — decide in the system prompt whether last should mean last added.
+- `get_exchange_rate` uses Frankfurter (`https://api.frankfurter.dev/v1/latest?base=X&symbols=Y`). JSON parsed with `parse_float=Decimal`; IDR results `converted_idr` is an int (half-up once). One immediate retry on timeout/network/5xx, none on 4xx; 404/422 -> `UNKNOWN_CURRENCY`, everything else -> `UPSTREAM_ERROR`. Per-instance cache keyed (from, to), 1h TTL via `clock.now()`, failures not cached. Timeout is `TOOL_TIMEOUT_SECONDS` (tools.md says 5s; the setting defaults to 10). Same currency both sides -> rate 1, no HTTP.
+- Shortcut: retry has no backoff.
+- Process lesson: parallel workers must not run integration tests at the same time; they share one `<db>_test` that every test drops and recreates. From now on only one worker per wave runs integration tests.
