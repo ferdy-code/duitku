@@ -54,3 +54,10 @@ Added `opentelemetry-exporter-otlp-proto-http` next to `opentelemetry-sdk` (the 
 - Two codes: `AMBIGUOUS_AMOUNT` (could mean two amounts: `1.5`, `5m`, mixed separators, fractional rupiah) and `INVALID_AMOUNT` (zero, negative, > 10 billion, empty, no digits). `INVALID_AMOUNT` is new; the spec had no code for these. The agent asks the user to confirm in both cases, never guesses.
 - No floats: `Decimal`/`int` only. With a multiplier (`rb`, `k`, `juta`, `jt`) `.` and `,` are decimal separators (`1,5 juta` = 1,500,000). Without one, only groups of exactly 3 digits with one repeated separator count as thousands (`35.000`).
 - Footgun: `1.500rb` reads as 1,500 (follows the spec). Mention it in the tool description or prompt.
+
+## 2026-10-12 — T-102 — resolve_period
+- `resolve_period(period, now, tz) -> Period(start_date, end_date, label)`. `now` is injected, so the logic never reads the clock and tests are deterministic. Unknown period raises `InvalidPeriodError` (with `.hint`); T-104 maps it to `INVALID_ARGUMENT`.
+- `end_date` is inclusive, matching `query_expenses` in tools.md, so output feeds the query without ±1 conversion.
+- `this_week`/`this_month`/`this_year` end at today ("so far"), so future-dated expenses in the current period are excluded. Switching to full calendar periods is a small change if needed.
+- `last_7_days`/`last_30_days` include today. Weeks start on Monday. Labels are Indonesian (user-facing).
+- tools.md gap: it does not state these choices or an error code for an unknown period. Add them to the spec.
