@@ -1,0 +1,58 @@
+[project]
+name = "duitku"
+version = "0.1.0"
+description = "Personal-finance AI agent on Telegram (Indonesian)"
+requires-python = ">=3.12"
+dependencies = [
+    "alembic==1.20.0",
+    "httpx==0.28.1",
+    "langchain-core==1.6.9",
+    "langchain-openai==1.7.0",
+    "langgraph==1.2.14",
+    "langgraph-checkpoint-postgres==3.1.2",
+    "openai==3.29.0",
+    "opentelemetry-exporter-otlp-proto-http==1.45.1",
+    "opentelemetry-sdk==1.45.1",
+    "pgvector==0.5.1",
+    "psycopg[binary,pool]==3.3.6",
+    "pydantic==2.14.1",
+    "pydantic-settings==2.15.0",
+    "python-telegram-bot==22.8",
+    "sqlalchemy[asyncio]==2.1.4",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.18,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pyright==1.1.414",
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "pyyaml==6.0.3",
+    "ruff==0.17.0",
+    "types-pyyaml==6.0.12.20260906",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+extend-exclude = ["docs"]  # ruff 0.17 also formats code blocks in .md; docs are not code
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "ASYNC", "RUF"]
+
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+venvPath = "."
+venv = ".venv"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "--import-mode=importlib -m 'not eval'"
+markers = ["eval: real-LLM eval cases (needs LLM_API_KEY); run with `pytest -m eval`"]

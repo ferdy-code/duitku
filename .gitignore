@@ -1,0 +1,11 @@
+.claude/agent-memory/
+.env
+data/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.pyright/
+*.egg-info/
+dist/
