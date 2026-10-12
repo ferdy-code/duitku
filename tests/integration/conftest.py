@@ -3,21 +3,26 @@
 The dev database is never touched. If Postgres is unreachable, tests skip with a clear reason.
 """
 
+import asyncio
 import os
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 
 import psycopg
 import pytest
+import pytest_asyncio
+from alembic import command
 from alembic.config import Config
 from psycopg import sql
 from sqlalchemy.engine import make_url
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 # Config requires LLM vars at load time; DB tests do not use them. Real values win if set.
 os.environ.setdefault("LLM_BASE_URL", "http://unused.invalid/v1")
 os.environ.setdefault("LLM_API_KEY", "unused")
 
 from duitku.config import get_settings
+from duitku.db.engine import make_engine, make_sessionmaker
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -55,3 +60,13 @@ def alembic_cfg(fresh_db: str) -> Config:
     cfg = Config(str(ROOT / "alembic.ini"))
     cfg.attributes["url"] = fresh_db  # env.py prefers this over DATABASE_URL
     return cfg
+
+
+@pytest_asyncio.fixture
+async def sm(alembic_cfg: Config, fresh_db: str) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    """Sessionmaker on a freshly migrated test DB. Callers commit explicitly."""
+    # Sync Alembic cannot run inside a running loop (asyncio.run) -> hop to a thread.
+    await asyncio.to_thread(command.upgrade, alembic_cfg, "head")
+    engine = make_engine(fresh_db)
+    yield make_sessionmaker(engine)
+    await engine.dispose()
