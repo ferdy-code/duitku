@@ -15,6 +15,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     Numeric,
@@ -57,7 +58,8 @@ class User(Base):
 
 class Category(Base):
     __tablename__ = "categories"
-    __table_args__ = (UniqueConstraint("user_id", "slug"),)
+    # UNIQUE (user_id, id) is the target of the composite FKs (migration 0002).
+    __table_args__ = (UniqueConstraint("user_id", "slug"), UniqueConstraint("user_id", "id"))
     id: Mapped[uuid.UUID] = _pk()
     user_id: Mapped[uuid.UUID] = _user_fk()
     slug: Mapped[str] = mapped_column(Text)
@@ -66,6 +68,7 @@ class Category(Base):
 
 class Receipt(Base):
     __tablename__ = "receipts"
+    __table_args__ = (UniqueConstraint("user_id", "id"),)
     id: Mapped[uuid.UUID] = _pk()
     user_id: Mapped[uuid.UUID] = _user_fk()
     file_path: Mapped[str] = mapped_column(Text)
@@ -76,6 +79,9 @@ class Receipt(Base):
 class Expense(Base):
     __tablename__ = "expenses"
     __table_args__ = (
+        # Composite FKs: Postgres itself rejects another user's category/receipt (migration 0002).
+        ForeignKeyConstraint(["user_id", "category_id"], ["categories.user_id", "categories.id"]),
+        ForeignKeyConstraint(["user_id", "receipt_id"], ["receipts.user_id", "receipts.id"]),
         CheckConstraint("amount_idr > 0"),
         CheckConstraint("source IN ('text','receipt')"),
         Index(
@@ -95,14 +101,12 @@ class Expense(Base):
     id: Mapped[uuid.UUID] = _pk()
     user_id: Mapped[uuid.UUID] = _user_fk()
     amount_idr: Mapped[int] = mapped_column(BigInteger)
-    category_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("categories.id"))
+    category_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
     merchant: Mapped[str | None] = mapped_column(Text)
     note: Mapped[str | None] = mapped_column(Text)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     source: Mapped[str] = mapped_column(Text)
-    receipt_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("receipts.id")
-    )
+    receipt_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     items: Mapped[list[Any] | None] = mapped_column(JSONB)
     orig_currency: Mapped[str | None] = mapped_column(Text)
     orig_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
@@ -116,12 +120,13 @@ class Expense(Base):
 class Budget(Base):
     __tablename__ = "budgets"
     __table_args__ = (
+        ForeignKeyConstraint(["user_id", "category_id"], ["categories.user_id", "categories.id"]),
         UniqueConstraint("user_id", "category_id"),
         CheckConstraint("monthly_limit_idr > 0"),
     )
     id: Mapped[uuid.UUID] = _pk()
     user_id: Mapped[uuid.UUID] = _user_fk()
-    category_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("categories.id"))
+    category_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
     monthly_limit_idr: Mapped[int] = mapped_column(BigInteger)
 
 

@@ -19,7 +19,8 @@ CREATE TABLE categories (
   user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   slug    text NOT NULL,                 -- 'makan-minum'
   name    text NOT NULL,                 -- 'Makan & Minum'
-  UNIQUE (user_id, slug)
+  UNIQUE (user_id, slug),
+  UNIQUE (user_id, id)                   -- FK target (migration 0002)
 );
 -- Seed on user creation: makan-minum, transport, belanja, tagihan, hiburan, kesehatan, pendidikan, lainnya
 
@@ -28,19 +29,20 @@ CREATE TABLE receipts (
   user_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   file_path  text NOT NULL,
   extraction jsonb,                      -- parse_receipt output; null until parsed
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (user_id, id)                   -- FK target (migration 0002)
 );
 
 CREATE TABLE expenses (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id         uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   amount_idr      bigint NOT NULL CHECK (amount_idr > 0),
-  category_id     uuid NOT NULL REFERENCES categories(id),
+  category_id     uuid NOT NULL,
   merchant        text,
   note            text,
   occurred_at     timestamptz NOT NULL,
   source          text NOT NULL CHECK (source IN ('text','receipt')),
-  receipt_id      uuid REFERENCES receipts(id),
+  receipt_id      uuid,
   items           jsonb,                 -- receipt line items (optional)
   orig_currency   text,                  -- e.g. 'USD' when converted
   orig_amount     numeric(18,2),
@@ -48,7 +50,10 @@ CREATE TABLE expenses (
   idempotency_key text,                  -- tool_call_id; prevents duplicates on retry
   created_at      timestamptz NOT NULL DEFAULT now(),
   updated_at      timestamptz NOT NULL DEFAULT now(),
-  deleted_at      timestamptz
+  deleted_at      timestamptz,
+  -- composite FKs: DB rejects another user's category/receipt (migration 0002)
+  FOREIGN KEY (user_id, category_id) REFERENCES categories (user_id, id),
+  FOREIGN KEY (user_id, receipt_id)  REFERENCES receipts (user_id, id)
 );
 CREATE INDEX expenses_user_time_idx ON expenses (user_id, occurred_at DESC) WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX expenses_idem_idx ON expenses (user_id, idempotency_key) WHERE idempotency_key IS NOT NULL;
@@ -56,9 +61,10 @@ CREATE UNIQUE INDEX expenses_idem_idx ON expenses (user_id, idempotency_key) WHE
 CREATE TABLE budgets (
   id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id           uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  category_id       uuid NOT NULL REFERENCES categories(id),
+  category_id       uuid NOT NULL,
   monthly_limit_idr bigint NOT NULL CHECK (monthly_limit_idr > 0),
-  UNIQUE (user_id, category_id)
+  UNIQUE (user_id, category_id),
+  FOREIGN KEY (user_id, category_id) REFERENCES categories (user_id, id)
 );
 
 CREATE TABLE memories (
