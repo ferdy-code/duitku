@@ -16,7 +16,7 @@ Work sequentially by phase, one task at a time. Tick `[x]` only when ALL accepta
 
 - [x] **T-001 Project init.** `uv init`, folders per `architecture.md`, `pyproject.toml` (pin versions after checking latest stable), `ruff` + `pyright` config, `.gitignore` (`.env`, `data/`).
   Read: `architecture.md`. AC: `uv run pytest` runs (0 tests OK); ruff + pyright green.
-- [ ] **T-002 Config.** `config.py` with `pydantic-settings` covering every var in `.env.example`; fail fast with a clear message on missing required vars.
+- [x] **T-002 Config.** `config.py` with `pydantic-settings` covering every var in `.env.example`; fail fast with a clear message on missing required vars.
   AC: unit test loads config from dummy env; no `os.environ` outside `config.py`.
 - [ ] **T-003 Database & migrations.** `docker compose up -d db`; async engine; SQLAlchemy models + Alembic for all tables (except checkpoint tables).
   Read: `data-model.md`. AC: `upgrade head` from empty DB works; `downgrade base` works; `vector` extension enabled.
