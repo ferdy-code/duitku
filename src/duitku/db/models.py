@@ -9,7 +9,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from pgvector.sqlalchemy import Vector  # pyright: ignore[reportMissingTypeStubs]
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     BigInteger,
     CheckConstraint,

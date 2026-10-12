@@ -3,9 +3,7 @@
 from typing import Annotated, TypedDict
 
 from langchain_core.messages import AnyMessage
-
-# langgraph/ has no __init__.py (namespace package) so pyright strict reports missing stubs.
-from langgraph.graph import add_messages  # pyright: ignore[reportMissingTypeStubs]
+from langgraph.graph import add_messages
 
 
 class AgentState(TypedDict):

@@ -48,6 +48,8 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "ASYNC", "RUF"]
 include = ["src", "tests", "experiments"]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
+# langgraph is a namespace package (no __init__.py) so strict mode reports missing stubs.
+reportMissingTypeStubs = "none"
 venvPath = "."
 venv = ".venv"
 

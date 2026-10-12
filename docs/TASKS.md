@@ -42,7 +42,7 @@ Goal: understand tool calling from first principles before using a framework.
 
 - [x] **T-201 State + prompt builder.** `agent/state.py`, `agent/prompts.py`.
   Read: `agent.md`. AC: no placeholders left unfilled; empty memories still valid.
-- [ ] **T-202 Graph v1.** `agent/{graph,nodes,routing}.py`: `agent ↔ tools` only (no approval/memory yet), `MAX_AGENT_STEPS`, `GraphRecursionError` handling.
+- [x] **T-202 Graph v1.** `agent/{graph,nodes,routing}.py`: `agent ↔ tools` only (no approval/memory yet), `MAX_AGENT_STEPS`, `GraphRecursionError` handling.
   Read: `agent.md`. AC: fake-model test: loop stops at step cap; ToolMessage invariant holds.
 - [ ] **T-203 Postgres checkpointer.** `AsyncPostgresSaver` + pool, `setup()` at startup.
   Read: `agent.md`. AC: second message in same thread sees the first; different threads isolated; history survives process restart.
