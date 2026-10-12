@@ -21,3 +21,11 @@ Added `opentelemetry-exporter-otlp-proto-http` next to `opentelemetry-sdk` (the 
 - `get_settings()` is `lru_cache`d; tests use `load_settings(env_file=None)` to bypass both the cache and the real `.env`.
 - `DEFAULT_TIMEZONE` validated against IANA names; `LOG_LEVEL` restricted to the standard levels.
 - Guard test greps `src/` for `os.environ` / `getenv` / `environ` outside `config.py` (hard rule: env read only in config).
+
+## 2026-10-12 — T-003 — local Postgres instead of Docker; test DB separation
+- Decision (Keina): no Docker for the DB. PostgreSQL 18 runs locally (here: `localhost:5433`); no `docker-compose.yml` in the repo for now. TASKS T-003 and `architecture.md` updated. T-408 (`app` service in `docker-compose.yml`) is untouched and will need revisiting at deploy time.
+- Prerequisite: the server must offer the `pgvector` extension (`SELECT * FROM pg_available_extensions WHERE name='vector'`); migration 0001 runs `CREATE EXTENSION IF NOT EXISTS vector` (needs a role allowed to create it; the dev role is superuser). Verified on 18.3 with vector 0.8.2.
+- Integration tests never touch the dev DB: they derive `<db>_test` from `DATABASE_URL`, and drop and recreate it before every test (guard: refuses names not ending in `_test`). The role needs CREATEDB. If Postgres is unreachable the tests skip with a message.
+- Migration 0001 is raw DDL copied from `data-model.md` (exact match: partial/hnsw indexes, CHECKs, `gen_random_uuid()`); a test asserts the ORM models produce zero Alembic autogenerate diff against it. `vector(384)` is frozen in the migration (a migration must not follow runtime config); the models carry the same constant `EMBEDDING_DIM`. Downgrade drops the tables and the `vector` extension (fails safely if something else uses it).
+- Alembic env.py is async, takes the URL from `duitku.config` (or `config.attributes["url"]` for tests), and ignores LangGraph checkpoint tables. Integration tests are sync (Alembic's async env uses `asyncio.run`, illegal in a running loop).
+- Flaw noted: `get_settings()` requires `LLM_BASE_URL`/`LLM_API_KEY`, so `alembic upgrade head` fails on a machine where only the DB is configured. Tests set dummy LLM env vars. Consider lazily-required LLM settings (same pattern as Telegram) in a later task.

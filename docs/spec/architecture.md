@@ -23,7 +23,7 @@ If this conflicts with PRD, stop and ask. Library APIs change: verify against pi
 | Agent             | `langgraph`, `langchain-core`, `langchain-openai`, `openai` (pin versions at setup)                                                                                                                                                     |
 | Checkpoint        | `langgraph-checkpoint-postgres` (`AsyncPostgresSaver`), psycopg v3 + pool                                                                                                                                                        |
 | LLM               | Any OpenAI-compatible endpoint (`ChatOpenAI(base_url=…)`). Env: `LLM_BASE_URL`, `LLM_API_KEY`, `MODEL_AGENT`, `MODEL_LIGHT`, `MODEL_VISION` (see `.env.example`). Never hardcode                                                                                                                       |
-| DB                | PostgreSQL 18 + pgvector (`pgvector/pgvector:pg18`)                                                                                                                                                                              |
+| DB                | PostgreSQL 18 + pgvector, run locally (no Docker; tests use a separate `<db>_test` database)                                                                                                                                                                                                           |
 | ORM/migrations    | SQLAlchemy 2.x async (Core for aggregates) + Alembic                                                                                                                                                                             |
 | Embeddings        | `sentence-transformers`, default `intfloat/multilingual-e5-small` (384-dim). E5 needs `"query: "` / `"passage: "` prefixes. Alt: `bge-m3` (1024-dim, heavier). Dim is tied to `vector(N)`: changing model = migration + re-embed |
 | Telegram          | `python-telegram-bot` ≥ 21 (async), long polling first, webhook later                                                                                                                                                            |
@@ -36,7 +36,7 @@ If this conflicts with PRD, stop and ask. Library APIs change: verify against pi
 
 ```
 duitku/
-├── CLAUDE.md  pyproject.toml  docker-compose.yml  .env.example  alembic.ini
+├── CLAUDE.md  pyproject.toml  .env.example  alembic.ini
 ├── docs/            # PRD, TASKS, EVALS, DECISIONS, spec/
 ├── experiments/     # 01_manual_loop.py, 02_crewai/, 03_autogen/ (outside core app)
 ├── migrations/
@@ -66,7 +66,7 @@ duitku/
 | Level       | Scope                                                                                                  | Tools                           |
 | ----------- | ------------------------------------------------------------------------------------------------------ | ------------------------------- |
 | Unit        | `parse_idr_amount` (table-driven), `resolve_period` (month/year edges, Monday week), routing, trimming | pytest, no I/O                  |
-| Integration | repositories + tools against real Postgres/pgvector; cross-user isolation; `add_expense` idempotency   | pytest-asyncio + docker compose |
+| Integration | repositories + tools against real Postgres/pgvector; cross-user isolation; `add_expense` idempotency   | pytest-asyncio + local Postgres |
 | Graph       | wiring + HITL with a fake chat model: approve, reject, idempotent resume, ToolMessage invariant        | pytest, no API key              |
 | Eval        | real LLM, cases in `EVALS.md`; assert DB effects + tool calls, not reply text                          | `pytest -m eval`                |
 
