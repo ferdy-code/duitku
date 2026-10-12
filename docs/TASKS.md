@@ -31,7 +31,7 @@ Goal: understand tool calling from first principles before using a framework.
   Read: `tools.md`. AC: all pass; ambiguous input returns `AMBIGUOUS_AMOUNT`, never a guess.
 - [x] **T-102 `resolve_period`.** `domain/periods.py`, TZ-aware, Monday-start weeks, injected `now`.
   Read: `tools.md`. AC: tests cover month/year rollover, leap February, no direct `datetime.now()` in logic.
-- [ ] **T-103 Tool envelope + decorator.** `tools/base.py`: ok/error envelope, context extraction from `RunnableConfig`, audit decorator (`tool_audit_log`, redaction when `LOG_CONTENT=false`).
+- [x] **T-103 Tool envelope + decorator.** `tools/base.py`: ok/error envelope, context extraction from `RunnableConfig`, audit decorator (`tool_audit_log`, redaction when `LOG_CONTENT=false`).
   Read: `tools.md`. AC: unexpected exception → generic `INTERNAL_ERROR`; validation failure → `INVALID_ARGUMENT` with `hint`.
 - [ ] **T-104 Core tools.** `add_expense`, `query_expenses`, `resolve_period` (tool), including `idempotency_key`.
   Read: `tools.md`, `data-model.md`. AC: same `tool_call_id` twice → one row; every `group_by` matches reference SQL.

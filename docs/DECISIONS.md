@@ -61,3 +61,10 @@ Added `opentelemetry-exporter-otlp-proto-http` next to `opentelemetry-sdk` (the 
 - `this_week`/`this_month`/`this_year` end at today ("so far"), so future-dated expenses in the current period are excluded. Switching to full calendar periods is a small change if needed.
 - `last_7_days`/`last_30_days` include today. Weeks start on Monday. Labels are Indonesian (user-facing).
 - tools.md gap: it does not state these choices or an error code for an unknown period. Add them to the spec.
+
+## 2026-10-12 — T-103 — tool envelope and audit decorator
+- `tools/base.py`: `ok`/`error` envelope, `get_context(config)` (user_id and timezone only from `config["configurable"]`), `audited(tool_name)` decorator writing `tool_audit_log`.
+- Mapping: `ValidationError`/`ValueError` -> `INVALID_ARGUMENT` with hint; any other exception -> generic `INTERNAL_ERROR` with no exception text (only the exception type is logged; traceback only when `LOG_CONTENT=true`). Audit args are redacted unless `LOG_CONTENT=true`. A failed audit write is logged and does not change the tool result.
+- Deviation from tools.md: LangChain validates args against `args_schema` BEFORE our wrapper runs, so the decorator never sees those errors. T-104 tools must be built with `StructuredTool.from_function(coroutine=audited("x")(fn), name=..., handle_validation_error=validation_error_envelope)`; the `@tool` decorator does not accept that kwarg in the pinned langchain-core 1.6.9.
+- Tool results are dicts that LangChain JSON-dumps into `ToolMessage.content`, so `data` must be JSON-serializable (no `date`/`UUID`).
+- Open: `tool_audit_log` has no `tool_call_id` column; the id is only logged on audit failure. OTel span from tools.md skipped until the observability task. Broad `ValueError` mapping may leak library error text to the LLM; introduce an explicit `ToolError` if it bites.
