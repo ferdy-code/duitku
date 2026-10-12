@@ -23,7 +23,7 @@ Docs conflict or are ambiguous on something important → stop and ask. Don't gu
 2. Before coding: state the task, files to touch, short plan. Wait for approval on large tasks.
 3. Write tests with the code. Before declaring done run: `uv run pytest && uv run ruff check . && uv run ruff format --check . && uv run pyright`.
 4. Tick a task only when ALL its acceptance criteria pass. Report what was tested and what wasn't.
-5. Small commits, one per task. Never commit `.env` or `data/`.
+5. Small commits, one per task. Never commit `.env` or `data/`. Never run `git push` (any form, including `--force` and `--tags`); local commits only, the owner pushes.
 6. This is a learning project: briefly explain the _why_ of non-obvious choices (tool calling, ReAct, memory, interrupt) and log them in `docs/DECISIONS.md`.
 7. Library APIs (LangGraph, LangChain, python-telegram-bot, checkpoint-postgres, OpenAI SDK / `langchain-openai`) change fast. Check docs for the version pinned in `pyproject.toml` before using them; if a spec example differs from the current API, follow the API and log the deviation.
 
