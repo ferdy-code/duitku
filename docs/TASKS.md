@@ -48,7 +48,7 @@ Goal: understand tool calling from first principles before using a framework.
   Read: `agent.md`. AC: second message in same thread sees the first; different threads isolated; history survives process restart.
 - [x] **T-204 History trimming.** `agent/trimming.py`.
   Read: `agent.md`. AC: trimmed view never starts with an orphan ToolMessage or splits a tool_calls↔ToolMessage pair; stored state unchanged.
-- [ ] **T-205 CLI.** `interfaces/runner.py` + `interfaces/cli.py`.
+- [x] **T-205 CLI.** `interfaces/runner.py` + `interfaces/cli.py`.
   Read: `interfaces-ops.md`. AC: multi-turn chat works; `--verbose` shows tool calls + observations.
 - [x] **T-206 More tools.** `update_expense`, `get_exchange_rate` (external API, cache, timeout, retry-once). *`get_exchange_rate` is P1 in PRD but built here to practice calling external APIs.*
   Read: `tools.md`. AC: HTTP-mocked tests (success, timeout, malformed); "change the last one to 40rb" updates the correct expense (R-05).
