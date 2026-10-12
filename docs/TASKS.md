@@ -44,7 +44,7 @@ Goal: understand tool calling from first principles before using a framework.
   Read: `agent.md`. AC: no placeholders left unfilled; empty memories still valid.
 - [x] **T-202 Graph v1.** `agent/{graph,nodes,routing}.py`: `agent ↔ tools` only (no approval/memory yet), `MAX_AGENT_STEPS`, `GraphRecursionError` handling.
   Read: `agent.md`. AC: fake-model test: loop stops at step cap; ToolMessage invariant holds.
-- [ ] **T-203 Postgres checkpointer.** `AsyncPostgresSaver` + pool, `setup()` at startup.
+- [x] **T-203 Postgres checkpointer.** `AsyncPostgresSaver` + pool, `setup()` at startup.
   Read: `agent.md`. AC: second message in same thread sees the first; different threads isolated; history survives process restart.
 - [x] **T-204 History trimming.** `agent/trimming.py`.
   Read: `agent.md`. AC: trimmed view never starts with an orphan ToolMessage or splits a tool_calls↔ToolMessage pair; stored state unchanged.
