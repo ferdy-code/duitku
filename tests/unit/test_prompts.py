@@ -92,3 +92,9 @@ def test_prompt_is_deterministic_and_does_not_read_clock() -> None:
 
 def test_state_has_only_spec_fields() -> None:
     assert set(AgentState.__annotations__) == {"messages", "recalled_memories", "rejected_call_ids"}
+
+
+def test_memory_rule_covers_sensitive_data_and_update_flow() -> None:
+    out = build()
+    for needle in ("PINs", "passwords", "recall_memory first", "forget_memory", "DATA"):
+        assert needle in out

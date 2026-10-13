@@ -2,7 +2,10 @@
 
 from typing import get_args
 
+import pytest
+
 from duitku.domain.periods import PERIODS
+from duitku.memory.validation import MEMORY_KINDS
 from duitku.tools import clock
 from duitku.tools.registry import build_tools
 from duitku.tools.resolve_period import PeriodName
@@ -20,6 +23,9 @@ def test_registry_schemas_hide_injected_args() -> None:
         "resolve_period",
         "update_expense",
         "get_exchange_rate",
+        "save_memory",
+        "recall_memory",
+        "forget_memory",
     }
     for t in tools.values():
         assert not {"config", "tool_call_id", "user_id", "timezone"} & set(t.args)
@@ -32,6 +38,19 @@ def test_registry_schemas_hide_injected_args() -> None:
         "week",
         "month",
     }
+
+
+def test_memory_tool_schemas(monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom() -> None:
+        raise AssertionError("embedder must be resolved at call time, not build time")
+
+    monkeypatch.setattr("duitku.tools._memory.get_embedder", boom)
+    tools = {t.name: t for t in build_tools()}  # builds without loading the embedder or torch
+    assert set(tools["save_memory"].args["kind"]["enum"]) == set(MEMORY_KINDS)
+    assert tools["recall_memory"].args["top_k"]["maximum"] == 5
+    assert tools["recall_memory"].args["top_k"]["minimum"] == 1
+    assert "recall_memory first" in tools["save_memory"].description
+    assert "forget_memory" in tools["save_memory"].description
 
 
 def test_clock_is_aware() -> None:

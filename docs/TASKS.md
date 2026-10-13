@@ -65,7 +65,7 @@ Goal: understand tool calling from first principles before using a framework.
   Read: `memory.md`, `data-model.md`. AC: two near-duplicate saves → one row (updated); recall filtered by `user_id`.
 - [x] **T-303 Threshold calibration.** `experiments/calibrate_memory_threshold.py`: ~30 relevant/irrelevant Indonesian pairs; pick recall + dedupe thresholds; compare `multilingual-e5-small` vs `bge-m3`.
   Read: `memory.md`. AC: decision + summary data in `DECISIONS.md`; thresholds in config.
-- [ ] **T-304 Memory tools.** `save_memory`, `recall_memory`, `forget_memory`.
+- [x] **T-304 Memory tools.** `save_memory`, `recall_memory`, `forget_memory`.
   Read: `tools.md`, `memory.md`. AC: sensitive data (card/ID numbers) refused by prompt AND a regex validator; tested.
 - [ ] **T-305 `load_context` node.** Auto-recall top-3 into `recalled_memories`.
   Read: `agent.md`. AC: memory saved in thread A appears in thread B (same user); simulated embedding failure → run still succeeds.
