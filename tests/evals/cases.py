@@ -12,13 +12,20 @@ class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class SeedMemory(_Strict):
+    kind: str
+    content: str
+
+
 class Seed(_Strict):
     fixture: str | None = None  # name in runner.SEED_FIXTURES
+    memories: list[SeedMemory] = []  # saved through memory.store.save with the REAL embedder
     remove_categories: list[str] = []  # slugs deleted from the user's default categories
 
 
 class Turn(_Strict):
     user: str
+    thread: str = "main"  # turns with the same name share a thread; a new name = a NEW thread
 
 
 class ToolExpect(_Strict):
@@ -39,12 +46,24 @@ class DbExpect(_Strict):
     expense: ExpenseExpect | None = None  # checked against the oldest stored row
 
 
+class MemoryExpect(_Strict):
+    count: int | list[int] | None = None  # stored memory rows of the user (any of, if list)
+    kind: str | None = None  # every stored row must have this kind
+    any_contains: list[str] = []  # case-insensitive; at least one row mentions at least one
+    none_contain: list[str] = []  # case-insensitive; no row mentions any of these
+    # Digit string (e.g. a card number) that must not leak: no 8-digit window of it may appear,
+    # digits-only, in any memory row or in any tool call argument.
+    forbid_digits: str | None = None
+
+
 class Expect(_Strict):
     tool_calls: list[ToolExpect] = []  # must appear in this order (other calls may interleave)
     no_tool_calls: list[str] = []
     max_calls: dict[str, int] = {}  # tool name -> max number of calls
     db: DbExpect | None = None
     reply_asks: bool = False  # reply contains a question mark (asks for clarification)
+    reply_no_question: bool = False  # reply contains no question mark
+    memories: MemoryExpect | None = None
     reply_contains_any: list[str] = []  # case-insensitive
     reply_total_of_range: tuple[date, date] | None = None  # reply states SQL total of this range
     max_steps: int = Field(gt=0)  # model calls over all turns

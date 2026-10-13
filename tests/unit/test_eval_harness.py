@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 from tests.evals.cases import Case, load_cases
-from tests.evals.checks import DbRow, Observed, check_case, numbers_in
+from tests.evals.checks import DbRow, MemRow, Observed, check_case, numbers_in
 from tests.evals.report import CaseResult, render_table, summarize
 from tests.evals.runner import eval_db_url, reset_eval_db
 
@@ -25,9 +25,11 @@ def _step(*calls: tuple[str, dict[str, object]]) -> ModelStep:
     return ModelStep(calls=[ToolStep(n, a, "{}") for n, a in calls], input_tokens=10)
 
 
-def test_shipped_cases_load_and_cover_e01_to_e10() -> None:
+def test_shipped_cases_load_and_cover_e01_to_e19b() -> None:
     cases = load_cases(CASES_YAML)
-    assert [c.id for c in cases] == [f"E-{i:02d}" for i in range(1, 11)]
+    want = [f"E-{i:02d}" for i in range(1, 11)] + ["E-15", "E-16", "E-17", "E-17b"]
+    want += ["E-18", "E-19", "E-19b"]
+    assert [c.id for c in cases] == want
 
 
 def test_unknown_key_is_rejected() -> None:
@@ -93,6 +95,30 @@ def test_reply_checks_and_numbers() -> None:
     )
     assert check_case(case, Observed([], ["Maksudnya 5 juta?"], [], range_total=5)) == []
     assert len(check_case(case, Observed([], ["oke"], [], range_total=125000))) == 3
+
+
+def test_memory_expectations() -> None:
+    case = _case(
+        memories={"count": 1, "kind": "goal", "any_contains": ["2 JUTA"], "none_contain": ["1,5"]},
+        reply_no_question=True,
+    )
+    ok = [MemRow("goal", "budget makan 2 juta")]
+    assert check_case(case, Observed([], ["oke."], [], memories=ok)) == []
+    stale = [MemRow("goal", "budget 1,5 juta"), MemRow("fact", "x")]
+    assert len(check_case(case, Observed([], ["ok?"], [], memories=stale))) == 5
+
+
+def test_forbid_digits_checks_rows_and_tool_args() -> None:
+    case = _case(memories={"forbid_digits": "4111 1111 1111 1111"})
+    assert check_case(case, Observed([], ["maaf"], [])) == []
+    leak_row = [MemRow("fact", "kartu 4111-1111-1111-1111")]
+    assert check_case(case, Observed([], ["x"], [], memories=leak_row))
+    leak_call = [_step(("save_memory", {"content": "kartu 4111111111111111"}))]
+    assert check_case(case, Observed(leak_call, ["x"], []))
+    partial = [_step(("save_memory", {"content": "kartu diawali 4111 1111"}))]
+    assert check_case(case, Observed(partial, ["x"], []))
+    fine = [_step(("add_expense", {"amount": "35rb"}))]
+    assert check_case(case, Observed(fine, ["x"], [])) == []
 
 
 def test_summary_and_table() -> None:

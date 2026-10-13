@@ -1,11 +1,11 @@
 """Pure assertion helpers: compare what happened (Observed) with a case's expectations."""
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
-from tests.evals.cases import Case, ExpenseExpect, ToolExpect
+from tests.evals.cases import Case, ExpenseExpect, MemoryExpect, ToolExpect
 
 from duitku.interfaces.trace import ModelStep, ToolStep
 
@@ -19,11 +19,18 @@ class DbRow:
 
 
 @dataclass(frozen=True)
+class MemRow:
+    kind: str
+    content: str
+
+
+@dataclass(frozen=True)
 class Observed:
     steps: list[ModelStep]  # all turns, in order
     replies: list[str]
     expenses: list[DbRow]  # live (not soft-deleted) rows, oldest first
     range_total: int | None = None  # SQL reference total for expect.reply_total_of_range
+    memories: list[MemRow] = field(default_factory=lambda: list[MemRow]())  # oldest first
 
 
 def numbers_in(text: str) -> set[int]:
@@ -70,6 +77,39 @@ def _check_expense(row: DbRow, want: ExpenseExpect) -> list[str]:
     return bad
 
 
+def _digit_windows(number: str, size: int = 8) -> list[str]:
+    d = re.sub(r"\D", "", number)
+    return [d[i : i + size] for i in range(max(len(d) - size + 1, 1))]
+
+
+def _leaks(text: str, windows: list[str]) -> bool:
+    digits = re.sub(r"\D", "", text)
+    return any(w in digits for w in windows)
+
+
+def _check_memories(want: MemoryExpect, rows: list[MemRow], calls: list[ToolStep]) -> list[str]:
+    bad: list[str] = []
+    if want.count is not None:
+        allowed = [want.count] if isinstance(want.count, int) else want.count
+        if len(rows) not in allowed:
+            bad.append(f"memories_count {len(rows)} not in {allowed}")
+    if want.kind is not None and any(r.kind != want.kind for r in rows):
+        bad.append(f"memory kinds {[r.kind for r in rows]} != all {want.kind!r}")
+    lowered = [r.content.lower() for r in rows]
+    if want.any_contains and not any(s.lower() in c for c in lowered for s in want.any_contains):
+        bad.append(f"no memory mentions any of {want.any_contains}")
+    for s in want.none_contain:
+        if any(s.lower() in c for c in lowered):
+            bad.append(f"a memory still mentions {s!r}")
+    if want.forbid_digits:
+        win = _digit_windows(want.forbid_digits)
+        if any(_leaks(r.content, win) for r in rows):
+            bad.append("a memory row contains the forbidden digits")
+        if any(_leaks(str(c.args), win) for c in calls):
+            bad.append("a tool call argument contains the forbidden digits")
+    return bad
+
+
 def check_case(case: Case, obs: Observed) -> list[str]:
     """Failure reasons; empty list = pass."""
     exp = case.expect
@@ -99,6 +139,10 @@ def check_case(case: Case, obs: Observed) -> list[str]:
             bad.append("expected an expense row, DB has none")
     if exp.reply_asks and "?" not in reply:
         bad.append("reply does not ask a question")
+    if exp.reply_no_question and "?" in reply:
+        bad.append("reply asks a question")
+    if exp.memories is not None:
+        bad += _check_memories(exp.memories, obs.memories, calls)
     if exp.reply_contains_any and not any(
         s.lower() in reply.lower() for s in exp.reply_contains_any
     ):

@@ -21,7 +21,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from tests.evals.cases import Case
-from tests.evals.checks import DbRow, Observed, check_case
+from tests.evals.checks import DbRow, MemRow, Observed, check_case
 from tests.evals.report import CaseResult
 from tests.evals.seeds import sample_month
 
@@ -33,6 +33,9 @@ from duitku.db.engine import make_engine, make_sessionmaker
 from duitku.db.repositories import categories, expenses
 from duitku.interfaces.runner import TurnRunner
 from duitku.interfaces.trace import ModelStep
+from duitku.memory import store as memory_store
+from duitku.memory.embeddings import get_embedder, warm_up_embedder
+from duitku.memory.thresholds import dedupe_threshold
 from duitku.tools import clock
 from duitku.tools.registry import build_tools
 
@@ -70,6 +73,17 @@ def reset_eval_db(url: str) -> None:
     command.upgrade(cfg, "head")
 
 
+_warmed = False
+
+
+async def _warm_up_once() -> None:
+    """Load the real E5 model before the first case: a cold load would eat the 5 s recall budget."""
+    global _warmed
+    if not _warmed:
+        await warm_up_embedder()
+        _warmed = True
+
+
 async def _seed(sm: async_sessionmaker[AsyncSession], user_id: uuid.UUID, case: Case) -> None:
     async with sm() as s:
         for slug in case.seed.remove_categories:
@@ -90,7 +104,22 @@ async def _seed(sm: async_sessionmaker[AsyncSession], user_id: uuid.UUID, case: 
                     source="text",
                     merchant=e.merchant,
                 )
+        for m in case.seed.memories:  # real embeddings, same path as the save_memory tool
+            await memory_store.save(
+                s,
+                user_id,
+                m.kind,
+                m.content,
+                get_embedder(),
+                dedupe_threshold=dedupe_threshold(),
+            )
         await s.commit()
+
+
+async def _read_memories(sm: async_sessionmaker[AsyncSession], user_id: uuid.UUID) -> list[MemRow]:
+    q = text("SELECT kind, content FROM memories WHERE user_id = :u ORDER BY created_at, id")
+    async with sm() as s:
+        return [MemRow(r[0], r[1]) for r in (await s.execute(q, {"u": user_id})).all()]
 
 
 async def _read_rows(sm: async_sessionmaker[AsyncSession], user_id: uuid.UUID) -> list[DbRow]:
@@ -128,6 +157,7 @@ class _Collect(logging.Handler):
 
 
 async def run_case(case: Case) -> CaseResult:
+    await _warm_up_once()
     dev_url = get_settings().database_url.get_secret_value()
     url = eval_db_url(dev_url)
     await asyncio.to_thread(reset_eval_db, url)
@@ -156,7 +186,7 @@ async def run_case(case: Case) -> CaseResult:
             failures: list[str] = []
             started = time.perf_counter()
             for turn in case.turns:
-                res = await runner.run(f"eval:{case.id}", user, turn.user)
+                res = await runner.run(f"eval:{case.id}:{turn.thread}", user, turn.user)
                 steps += res.trace
                 replies.append(res.text)
                 if res.failed:
@@ -165,7 +195,13 @@ async def run_case(case: Case) -> CaseResult:
         total = None
         if case.expect.reply_total_of_range:
             total = await _range_total(sm, user.user_id, *case.expect.reply_total_of_range)
-        obs = Observed(steps, replies, await _read_rows(sm, user.user_id), total)
+        obs = Observed(
+            steps,
+            replies,
+            await _read_rows(sm, user.user_id),
+            total,
+            await _read_memories(sm, user.user_id),
+        )
     finally:
         clock.now = original_now
         runner_log.removeHandler(collect)

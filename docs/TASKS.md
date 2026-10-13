@@ -69,7 +69,7 @@ Goal: understand tool calling from first principles before using a framework.
   Read: `tools.md`, `memory.md`. AC: sensitive data (card/ID numbers) refused by prompt AND a regex validator; tested.
 - [x] **T-305 `load_context` node.** Auto-recall top-3 into `recalled_memories`.
   Read: `agent.md`. AC: memory saved in thread A appears in thread B (same user); simulated embedding failure → run still succeeds.
-- [ ] **T-306 Memory evals.** Add E-15…E-19.
+- [x] **T-306 Memory evals.** Add E-15…E-19.
   Read: `EVALS.md`. AC: ≥ 80% pass; sensitive-data case (E-19) 100%.
 
 ## Phase 4 — Telegram, HITL, receipts, observability
