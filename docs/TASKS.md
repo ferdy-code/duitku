@@ -74,7 +74,7 @@ Goal: understand tool calling from first principles before using a framework.
 
 ## Phase 4 — Telegram, HITL, receipts, observability
 
-- [ ] **T-401 Telegram basics.** `interfaces/telegram/`: long polling, text handler, allowlist middleware, rate limit, per-thread lock, HTML formatting, `/start`, `/bantuan`.
+- [x] **T-401 Telegram basics.** `interfaces/telegram/`: long polling, text handler, allowlist middleware, rate limit, per-thread lock, HTML formatting, `/start`, `/bantuan`.
   Read: `interfaces-ops.md`. AC: non-allowlisted ID never reaches the agent (test); handler errors don't crash the bot.
 - [ ] **T-402 Approval node + `REQUIRES_APPROVAL`.** Including `delete_expense`.
   Read: `agent.md`. AC: fake-model tests: approve → tool runs; reject → no DB effect and agent responds sensibly; ToolMessage invariant holds.
