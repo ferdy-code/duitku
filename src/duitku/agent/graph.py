@@ -1,11 +1,11 @@
 """Graph v1: `agent <-> tools` loop (docs/spec/agent.md).
 
-    START -> agent --(tool_calls)--> tools -> agent ...
-               |         \\--(step cap hit)--> limit -> END
-               \\--(no tool_calls)--> END
+    START -> load_context -> agent --(tool_calls)--> tools -> agent ...
+                               |         \\--(step cap hit)--> limit -> END
+                               \\--(no tool_calls)--> END
 
-Extension points: `load_context` goes between START and agent, `approval` between agent and
-tools (route_after_agent), and the checkpointer is passed to `build_graph` (T-203).
+`load_context` (T-305) recalls long-term memories once per run, before the first model call.
+Extension point: `approval` goes between agent and tools (route_after_agent).
 """
 
 # pyright: reportUnknownMemberType=false
@@ -26,7 +26,9 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.errors import GraphRecursionError
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from duitku.agent.context import make_load_context_node
 from duitku.agent.nodes import (
     STEP_LIMIT_FALLBACK,
     Clock,
@@ -39,6 +41,7 @@ from duitku.agent.nodes import (
 from duitku.agent.routing import route_after_agent
 from duitku.agent.state import AgentState
 from duitku.config import get_settings
+from duitku.memory.embeddings import Embedder
 from duitku.tools import clock
 from duitku.tools.registry import build_tools
 
@@ -70,7 +73,11 @@ def build_graph(
     checkpointer: BaseCheckpointSaver[Any] | None = None,
     category_slugs: SlugLoader | None = None,
     now: Clock | None = None,
+    sessionmaker: async_sessionmaker[AsyncSession] | None = None,
+    embedder: Embedder | None = None,
 ) -> Graph:
+    """`sessionmaker`/`embedder` only feed `load_context` (None = real DB / real model, lazily).
+    Tools get theirs through `build_tools(sm, embedder)`."""
     settings = get_settings()
     tools = build_tools() if tools is None else tools
     graph = StateGraph(AgentState)
@@ -84,9 +91,11 @@ def build_graph(
             max_history_tokens=settings.short_term_max_tokens,
         ),
     )
+    graph.add_node("load_context", make_load_context_node(sessionmaker, embedder))
     graph.add_node("tools", make_tools_node(tools))
     graph.add_node("limit", make_limit_node())
-    graph.add_edge(START, "agent")
+    graph.add_edge(START, "load_context")
+    graph.add_edge("load_context", "agent")
     graph.add_conditional_edges(
         "agent", partial(route_after_agent, max_steps=settings.max_agent_steps)
     )

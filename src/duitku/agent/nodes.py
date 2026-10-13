@@ -74,7 +74,7 @@ def make_agent_node(
             now=now(),
             timezone=ctx.timezone.key,
             category_slugs=await slugs(config),
-            recalled_memories=state.get("recalled_memories", []),  # filled by load_context later
+            recalled_memories=state.get("recalled_memories", []),  # set by load_context
         )
         # Model view only: trimmed, with the system prompt prepended. Stored state stays whole.
         view: list[BaseMessage] = [

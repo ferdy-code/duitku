@@ -9,6 +9,7 @@
 """
 
 import asyncio
+import logging
 import threading
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -116,3 +117,12 @@ def get_embedder() -> Embedder:
     s = get_settings()
     check_embedding_dim(s.embedding_dim)
     return SentenceTransformerEmbedder(s.embedding_model, s.embedding_dim)
+
+
+async def warm_up_embedder(embedder: Embedder | None = None) -> None:
+    """Best-effort: load the model now so the first user message does not pay for it (and hit the
+    recall timeout). Never raises on embedding problems; call once at process start."""
+    try:
+        await (embedder or get_embedder()).embed_query("warm up")
+    except EmbeddingError as e:
+        logging.getLogger(__name__).warning("embedder warm-up failed (%s)", type(e).__name__)

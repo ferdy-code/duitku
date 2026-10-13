@@ -146,6 +146,7 @@ async def run_case(case: Case) -> CaseResult:
                 checkpointer=saver,
                 category_slugs=repo_slug_loader(sm),
                 now=lambda: FIXED_NOW,
+                sessionmaker=sm,  # auto-recall must read the eval DB, not the dev DB
             )
             runner = TurnRunner(graph, sm)
             user = await runner.resolve_user(EVAL_TELEGRAM_ID, f"eval-{case.id}")

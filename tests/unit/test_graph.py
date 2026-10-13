@@ -18,6 +18,7 @@ from langchain_core.messages import (
 )
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import StructuredTool
+from tests.fake_embedder import FakeEmbedder
 
 from duitku.agent import graph as graph_mod
 from duitku.agent.graph import build_graph, run_turn
@@ -72,6 +73,8 @@ async def _slugs(config: RunnableConfig) -> list[str]:
 
 
 def make_graph(llm: ScriptedChat, **kw: Any) -> Any:
+    # Failing embedder: load_context degrades to no memories, never touches a model or the DB.
+    kw.setdefault("embedder", FakeEmbedder({}, fail=True))
     return build_graph(llm=llm, tools=TOOLS, category_slugs=_slugs, **kw)
 
 

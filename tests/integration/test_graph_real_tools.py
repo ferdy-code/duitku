@@ -10,6 +10,7 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from tests.fake_embedder import FakeEmbedder
 
 from duitku.agent import graph as graph_mod
 from duitku.agent.graph import build_graph, run_turn
@@ -66,7 +67,13 @@ async def test_add_then_query_through_graph(
         ]
     )
     llm = scripted_llm(lambda _: next(script))
-    graph = build_graph(llm=llm, tools=build_tools(sm), category_slugs=repo_slug_loader(sm))
+    graph = build_graph(
+        llm=llm,
+        tools=build_tools(sm),
+        category_slugs=repo_slug_loader(sm),
+        sessionmaker=sm,
+        embedder=FakeEmbedder({}, fail=True),
+    )
     out = await run_turn(graph, [HumanMessage("makan warteg 35rb")], config)
 
     results: list[dict[str, Any]] = [

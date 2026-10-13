@@ -50,6 +50,8 @@ class Settings(BaseSettings):
     memory_recall_threshold: float = Field(default=0.835, ge=0, lt=1)
     memory_dedupe_threshold: float = Field(default=0.985, ge=0, lt=1)
     memory_recall_top_k: int = Field(default=3, ge=1)
+    # Auto-recall in load_context gives up after this (embedding + DB); the run goes on without it.
+    memory_recall_timeout_seconds: float = Field(default=5, gt=0)
 
     # --- App ---
     default_timezone: str = "Asia/Jakarta"

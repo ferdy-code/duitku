@@ -11,6 +11,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from tests.fake_embedder import FakeEmbedder
 
 from duitku.agent import graph as graph_mod
 from duitku.agent.graph import Graph, build_graph
@@ -37,6 +38,8 @@ def _runner(
         tools=build_tools(sm),
         checkpointer=saver or InMemorySaver(),
         category_slugs=repo_slug_loader(sm),
+        sessionmaker=sm,
+        embedder=FakeEmbedder({}, fail=True),  # no memory: keep this test about the runner
     )
     return TurnRunner(graph, sm)
 

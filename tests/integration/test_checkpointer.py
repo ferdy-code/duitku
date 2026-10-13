@@ -17,6 +17,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.engine import make_url
+from tests.fake_embedder import FakeEmbedder
 
 from duitku.agent import graph as graph_mod
 from duitku.agent.checkpointer import cli_thread_id, open_checkpointer, tg_thread_id
@@ -62,7 +63,13 @@ async def _no_slugs(_: RunnableConfig) -> Sequence[str]:
 
 
 def _graph(llm: ScriptedChat, saver: AsyncPostgresSaver) -> Graph:
-    return build_graph(llm=llm, tools=[], checkpointer=saver, category_slugs=_no_slugs)
+    return build_graph(
+        llm=llm,
+        tools=[],
+        checkpointer=saver,
+        category_slugs=_no_slugs,
+        embedder=FakeEmbedder({}, fail=True),  # no memory: keep this test about checkpoints
+    )
 
 
 def _echo(msgs: list[BaseMessage]) -> AIMessage:

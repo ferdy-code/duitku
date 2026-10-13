@@ -20,6 +20,7 @@ from duitku.agent.graph import build_graph
 from duitku.config import ConfigError, get_settings
 from duitku.interfaces.runner import TurnResult, TurnRunner
 from duitku.interfaces.trace import format_trace
+from duitku.memory.embeddings import warm_up_embedder
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,8 @@ async def repl(
 
 
 async def _run_cli(user_name: str, thread_name: str, verbose: bool) -> None:
+    print("Memuat model memori...", file=sys.stderr)  # first run may download ~470MB
+    await warm_up_embedder()
     async with open_checkpointer() as saver:
         runner = TurnRunner(build_graph(checkpointer=saver))
         user = await runner.resolve_user(cli_telegram_id(user_name), user_name)
