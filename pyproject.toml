@@ -50,11 +50,14 @@ dev = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["src", "tests"]
+src = ["src", "tests", "experiments"]
 extend-exclude = ["docs"]  # ruff 0.17 also formats code blocks in .md; docs are not code
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "ASYNC", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"experiments/calibration/pairs.py" = ["E501"]  # one dataset row per line, reviewable
 
 [tool.pyright]
 include = ["src", "tests", "experiments"]
@@ -62,13 +65,14 @@ pythonVersion = "3.12"
 typeCheckingMode = "strict"
 # langgraph is a namespace package (no __init__.py) so strict mode reports missing stubs.
 reportMissingTypeStubs = "none"
+extraPaths = ["experiments"]  # scripts there import `calibration.*` (their dir is on sys.path)
 venvPath = "."
 venv = ".venv"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-pythonpath = ["."]  # lets tests import sibling helpers as `tests.evals.*` (importlib mode adds nothing)
+pythonpath = [".", "experiments"]  # lets tests import sibling helpers as `tests.evals.*` (importlib mode adds nothing)
 addopts = "--import-mode=importlib -m 'not eval and not embedding'"
 markers = [
     "eval: real-LLM eval cases (needs LLM_API_KEY); run with `pytest -m eval`",

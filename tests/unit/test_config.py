@@ -37,8 +37,8 @@ def test_loads_with_required_only_and_defaults(env: pytest.MonkeyPatch) -> None:
     assert s.llm_timeout_seconds == 30
     assert s.telegram_bot_token is None
     assert s.telegram_allowed_user_ids == []
-    assert s.memory_recall_threshold is None
-    assert s.memory_dedupe_threshold is None
+    assert s.memory_recall_threshold == 0.835  # calibrated defaults (T-303)
+    assert s.memory_dedupe_threshold == 0.985
     assert s.memory_recall_top_k == 3
     assert s.embedding_dim == 384
     assert s.default_timezone == "Asia/Jakarta"
@@ -77,6 +77,16 @@ def test_allowed_user_ids_non_numeric_rejected(env: pytest.MonkeyPatch) -> None:
         load_settings(env_file=None)
 
 
+@pytest.mark.parametrize("name", ["MEMORY_RECALL_THRESHOLD", "MEMORY_DEDUPE_THRESHOLD"])
+@pytest.mark.parametrize("bad", ["1.0", "1.2", "-0.1"])
+def test_thresholds_must_be_in_unit_interval_below_one(
+    env: pytest.MonkeyPatch, name: str, bad: str
+) -> None:
+    env.setenv(name, bad)
+    with pytest.raises(ConfigError, match=name):
+        load_settings(env_file=None)
+
+
 def test_blank_optional_vars_in_env_file_are_unset(tmp_path: Path) -> None:
     f = tmp_path / ".env"
     f.write_text(
@@ -84,7 +94,7 @@ def test_blank_optional_vars_in_env_file_are_unset(tmp_path: Path) -> None:
         + "\nMEMORY_RECALL_THRESHOLD=\nTELEGRAM_BOT_TOKEN=\nTELEGRAM_ALLOWED_USER_IDS=\n"
     )
     s = load_settings(env_file=str(f))
-    assert s.memory_recall_threshold is None
+    assert s.memory_recall_threshold == 0.835  # blank = unset -> calibrated default
     assert s.telegram_bot_token is None
     assert s.telegram_allowed_user_ids == []
 

@@ -2,7 +2,7 @@
 
 The caller owns the session and the transaction (like repositories); nothing here commits.
 Embedding runs BEFORE any DB write, so an `EmbeddingError` leaves no partial state.
-Thresholds are parameters; read them with `memory.thresholds` (None until T-303 calibrates them).
+Thresholds are parameters; `memory.thresholds` reads the T-303 calibrated config values.
 """
 
 import uuid

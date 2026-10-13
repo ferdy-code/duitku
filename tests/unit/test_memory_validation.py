@@ -2,7 +2,7 @@
 
 import pytest
 
-from duitku.config import ConfigError, Settings, load_settings
+from duitku.config import Settings, load_settings
 from duitku.memory.thresholds import dedupe_threshold, recall_threshold
 from duitku.memory.validation import (
     MAX_CONTENT_CHARS,
@@ -46,14 +46,14 @@ def _settings(monkeypatch: pytest.MonkeyPatch, **thresholds: str) -> Settings:
     return load_settings(env_file=None)
 
 
-def test_thresholds_unset_raise_config_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    s = _settings(monkeypatch)
-    for fn in (dedupe_threshold, recall_threshold):
-        with pytest.raises(ConfigError, match="THRESHOLD"):
-            fn(s)
+def test_thresholds_default_to_calibrated_values(monkeypatch: pytest.MonkeyPatch) -> None:
+    s = _settings(monkeypatch)  # env cleared -> T-303 defaults (e5-small)
+    assert recall_threshold(s) == 0.835
+    assert dedupe_threshold(s) == 0.985
+    assert dedupe_threshold(s) < 1.0
 
 
-def test_thresholds_read_from_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_explicit_env_overrides_the_default(monkeypatch: pytest.MonkeyPatch) -> None:
     s = _settings(monkeypatch, MEMORY_DEDUPE_THRESHOLD="0.95", MEMORY_RECALL_THRESHOLD="0.85")
     assert dedupe_threshold(s) == 0.95
     assert recall_threshold(s) == 0.85

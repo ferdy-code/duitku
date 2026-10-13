@@ -2,8 +2,7 @@
 
 Required (fail fast): LLM_BASE_URL, LLM_API_KEY, DATABASE_URL, CHECKPOINT_DATABASE_URL.
 Optional / lazily required: Telegram vars (only the bot needs them; CLI and tests do not) and
-MEMORY_*_THRESHOLD (calibrated in T-303; the memory code must raise if they are None).
-Blank values in `.env` (e.g. `MEMORY_RECALL_THRESHOLD=`) count as unset.
+Blank values in `.env` (e.g. `TELEGRAM_BOT_TOKEN=`) count as unset (-> the default applies).
 """
 
 from functools import lru_cache
@@ -46,8 +45,10 @@ class Settings(BaseSettings):
     # --- Memory / embeddings ---
     embedding_model: str = "intfloat/multilingual-e5-small"
     embedding_dim: int = Field(default=384, ge=1)
-    memory_recall_threshold: float | None = Field(default=None, ge=0, le=1)
-    memory_dedupe_threshold: float | None = Field(default=None, ge=0, le=1)
+    # Calibrated for intfloat/multilingual-e5-small in T-303 (experiments/results/); re-calibrate
+    # when EMBEDDING_MODEL changes. Dedupe must stay < 1.0 (an identical vector can score 0.99999).
+    memory_recall_threshold: float = Field(default=0.835, ge=0, lt=1)
+    memory_dedupe_threshold: float = Field(default=0.985, ge=0, lt=1)
     memory_recall_top_k: int = Field(default=3, ge=1)
 
     # --- App ---
