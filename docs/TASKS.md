@@ -61,7 +61,7 @@ Goal: understand tool calling from first principles before using a framework.
 
 - [x] **T-301 Embedding service.** `memory/embeddings.py` per `memory.md` (lazy load, E5 prefixes, executor).
   Read: `memory.md`. AC: dimension matches `EMBEDDING_DIM`; Indonesian paraphrases score higher than unrelated sentences.
-- [ ] **T-302 Memory store.** `memory/store.py` + repository: save (with dedupe), recall, forget.
+- [x] **T-302 Memory store.** `memory/store.py` + repository: save (with dedupe), recall, forget.
   Read: `memory.md`, `data-model.md`. AC: two near-duplicate saves → one row (updated); recall filtered by `user_id`.
 - [ ] **T-303 Threshold calibration.** `experiments/calibrate_memory_threshold.py`: ~30 relevant/irrelevant Indonesian pairs; pick recall + dedupe thresholds; compare `multilingual-e5-small` vs `bge-m3`.
   Read: `memory.md`. AC: decision + summary data in `DECISIONS.md`; thresholds in config.
