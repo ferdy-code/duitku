@@ -82,7 +82,7 @@ Goal: understand tool calling from first principles before using a framework.
   Read: `interfaces-ops.md`. AC: delete flow works end-to-end on real Telegram (manual) + handler tests with fake updates.
 - [ ] **T-404 Receipts.** Photo handler → file + `receipts` row; `parse_receipt` (structured output + `warnings`); `add_expense(source="receipt")` triggers approval.
   Read: `tools.md`, `interfaces-ops.md`. AC: tested on ≥20 real receipts (minimarket, restaurant, e-commerce); accuracy of total/merchant logged (target ≥ 85%, G3); images never enter checkpoints.
-- [ ] **T-405 `interrupt` idempotency test.** Prove `approval` has no side effects before `interrupt()` (resuming twice duplicates nothing).
+- [x] **T-405 `interrupt` idempotency test.** Prove `approval` has no side effects before `interrupt()` (resuming twice duplicates nothing).
   Read: `agent.md`. AC: test green and documented.
 - [ ] **T-406 Observability.** `observability/tracing.py`: spans, metrics, `agent_runs` rows, redaction per `LOG_CONTENT`.
   Read: `interfaces-ops.md`. AC: one conversation's trace is complete in local SigNoz; `agent_runs` has tokens + duration.
