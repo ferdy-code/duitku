@@ -9,9 +9,10 @@ from typing import Literal
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 
+from duitku.agent.approval_policy import needs_approval
 from duitku.agent.state import AgentState
 
-Route = Literal["tools", "limit", "__end__"]
+Route = Literal["tools", "approval", "limit", "__end__"]
 
 
 def _wants_tools(msg: AnyMessage) -> bool:
@@ -30,8 +31,10 @@ def agent_steps_this_turn(messages: list[AnyMessage]) -> int:
 
 
 def route_after_agent(state: AgentState, *, max_steps: int) -> Route:
-    # Extension point: approval slots in here (tool in REQUIRES_APPROVAL -> "approval").
     messages = state["messages"]
-    if not messages or not _wants_tools(messages[-1]):
+    last = messages[-1] if messages else None
+    if not isinstance(last, AIMessage) or not _wants_tools(last):
         return "__end__"
-    return "limit" if agent_steps_this_turn(messages) >= max_steps else "tools"
+    if agent_steps_this_turn(messages) >= max_steps:  # cap first: nothing runs, nothing is asked
+        return "limit"
+    return "approval" if any(needs_approval(c) for c in last.tool_calls) else "tools"

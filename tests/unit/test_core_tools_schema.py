@@ -22,6 +22,7 @@ def test_registry_schemas_hide_injected_args() -> None:
         "query_expenses",
         "resolve_period",
         "update_expense",
+        "delete_expense",
         "get_exchange_rate",
         "save_memory",
         "recall_memory",

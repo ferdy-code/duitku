@@ -25,12 +25,19 @@ class MemRow:
 
 
 @dataclass(frozen=True)
+class Approval:
+    tool: str
+    expenses_at_pause: int  # live expense rows when the graph paused
+
+
+@dataclass(frozen=True)
 class Observed:
     steps: list[ModelStep]  # all turns, in order
     replies: list[str]
     expenses: list[DbRow]  # live (not soft-deleted) rows, oldest first
     range_total: int | None = None  # SQL reference total for expect.reply_total_of_range
     memories: list[MemRow] = field(default_factory=lambda: list[MemRow]())  # oldest first
+    approvals: list[Approval] = field(default_factory=lambda: list[Approval]())  # pauses seen
 
 
 def numbers_in(text: str) -> set[int]:
@@ -137,6 +144,16 @@ def check_case(case: Case, obs: Observed) -> list[str]:
             count is None or 0 not in ([count] if isinstance(count, int) else count)
         ):
             bad.append("expected an expense row, DB has none")
+    if exp.approval is not None:
+        hits = [a for a in obs.approvals if a.tool == exp.approval.tool]
+        if not hits:
+            bad.append(f"no approval requested for {exp.approval.tool}")
+        elif (want := exp.approval.expenses_at_pause) is not None and hits[
+            0
+        ].expenses_at_pause != want:
+            bad.append(f"{hits[0].expenses_at_pause} expense rows at pause (want {want})")
+    if exp.all_calls_answered and any(not c.observation for c in calls):
+        bad.append("a tool call has no observation (no ToolMessage)")
     if exp.reply_asks and "?" not in reply:
         bad.append("reply does not ask a question")
     if exp.reply_no_question and "?" in reply:

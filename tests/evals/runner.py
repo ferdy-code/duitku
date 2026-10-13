@@ -21,7 +21,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from tests.evals.cases import Case
-from tests.evals.checks import DbRow, MemRow, Observed, check_case
+from tests.evals.checks import Approval, DbRow, MemRow, Observed, check_case
 from tests.evals.report import CaseResult
 from tests.evals.seeds import sample_month
 
@@ -185,9 +185,17 @@ async def run_case(case: Case) -> CaseResult:
             replies: list[str] = []
             failures: list[str] = []
             started = time.perf_counter()
+            approvals: list[Approval] = []
             for turn in case.turns:
-                res = await runner.run(f"eval:{case.id}:{turn.thread}", user, turn.user)
-                steps += res.trace
+                thread = f"eval:{case.id}:{turn.thread}"
+                res = await runner.run(thread, user, turn.user)
+                while res.pending is not None:  # paused for approval
+                    n_rows = len(await _read_rows(sm, user.user_id))
+                    approvals.append(Approval(str(res.pending["tool"]), n_rows))
+                    if turn.decide is None:
+                        break
+                    res = await runner.resume(thread, user, turn.decide)
+                steps += res.trace  # a resumed result's trace already covers the whole turn
                 replies.append(res.text)
                 if res.failed:
                     failures.append(f"turn failed: {'; '.join(collect.lines) or 'unknown'}")
@@ -201,6 +209,7 @@ async def run_case(case: Case) -> CaseResult:
             await _read_rows(sm, user.user_id),
             total,
             await _read_memories(sm, user.user_id),
+            approvals,
         )
     finally:
         clock.now = original_now

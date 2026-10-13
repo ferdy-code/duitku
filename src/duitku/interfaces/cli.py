@@ -13,7 +13,7 @@ import logging
 import signal
 import sys
 from collections.abc import Awaitable, Callable, Sequence
-from typing import TextIO
+from typing import Literal, TextIO
 
 from duitku.agent.checkpointer import cli_thread_id, open_checkpointer
 from duitku.agent.graph import build_graph
@@ -25,6 +25,9 @@ from duitku.memory.embeddings import warm_up_embedder
 logger = logging.getLogger(__name__)
 
 EXIT_COMMANDS = frozenset({"", "/exit"})
+YES = frozenset({"y", "ya", "yes"})
+
+type Decide = Callable[[Literal["approve", "reject"]], Awaitable[TurnResult]]
 
 
 def cli_telegram_id(name: str) -> int:
@@ -38,8 +41,10 @@ async def repl(
     *,
     stdin: TextIO,
     out: TextIO,
+    decide: Decide | None = None,
     verbose: bool = False,
 ) -> None:
+    """`decide` answers a pending approval; anything but y/ya/yes (or EOF) is a rejection."""
     interactive = stdin.isatty()
     while True:
         if interactive:
@@ -54,9 +59,18 @@ async def repl(
         if text in EXIT_COMMANDS:
             return
         result = await run(text)
-        if verbose and result.trace:
-            out.write(format_trace(result.trace) + "\n")
-        out.write(result.text + "\n")
+        while True:
+            if verbose and result.trace:
+                out.write(format_trace(result.trace) + "\n")
+            out.write(result.text + "\n")
+            if result.pending is None or decide is None:
+                break
+            out.write("Setuju? [y/n] ")
+            out.flush()
+            answer = stdin.readline().strip().lower()
+            if not interactive:
+                out.write(f"{answer}\n")
+            result = await decide("approve" if answer in YES else "reject")
         out.flush()
 
 
@@ -71,7 +85,10 @@ async def _run_cli(user_name: str, thread_name: str, verbose: bool) -> None:
         async def run(text: str) -> TurnResult:
             return await runner.run(thread_id, user, text)
 
-        await repl(run, stdin=sys.stdin, out=sys.stdout, verbose=verbose)
+        async def decide(decision: Literal["approve", "reject"]) -> TurnResult:
+            return await runner.resume(thread_id, user, decision)
+
+        await repl(run, stdin=sys.stdin, out=sys.stdout, decide=decide, verbose=verbose)
 
 
 def _raise_interrupt(*_: object) -> None:

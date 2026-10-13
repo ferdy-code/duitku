@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from duitku.memory.embeddings import Embedder
 from duitku.tools.add_expense import build_add_expense_tool
+from duitku.tools.delete_expense import build_delete_expense_tool
 from duitku.tools.forget_memory import build_forget_memory_tool
 from duitku.tools.get_exchange_rate import build_get_exchange_rate_tool
 from duitku.tools.query_expenses import build_query_expenses_tool
@@ -24,6 +25,7 @@ def build_tools(
         build_query_expenses_tool(sessionmaker),
         build_resolve_period_tool(sessionmaker),
         build_update_expense_tool(sessionmaker),
+        build_delete_expense_tool(sessionmaker),
         build_get_exchange_rate_tool(sessionmaker),
         build_save_memory_tool(sessionmaker, embedder),
         build_recall_memory_tool(sessionmaker, embedder),

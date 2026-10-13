@@ -2,20 +2,23 @@
 
 Resolves the app user from an external identity, builds the trusted `RunnableConfig`
 (user_id/timezone/thread_id come from the DB row, never from message text), serializes turns per
-thread, and turns any failure into a friendly reply. Approval/resume is added with T-4xx.
+thread, and turns any failure into a friendly reply. A turn that hits `interrupt()` (approval)
+comes back with `TurnResult.pending` set; `resume()` answers it.
 """
 
 import asyncio
 import logging
 import uuid
 import weakref
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from typing import Any, Literal
 
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from duitku.agent.graph import Graph, run_turn
+from duitku.agent.graph import Graph, resume_turn, run_turn
 from duitku.config import get_settings
 from duitku.db.engine import get_sessionmaker
 from duitku.db.repositories import users
@@ -24,6 +27,7 @@ from duitku.interfaces.trace import ModelStep, extract_trace, final_text
 logger = logging.getLogger(__name__)
 
 ERROR_REPLY = "Maaf, ada gangguan saat memproses pesanmu. Coba lagi sebentar lagi ya."
+NOTHING_PENDING_REPLY = "Tidak ada yang perlu dikonfirmasi saat ini."
 
 
 @dataclass(frozen=True)
@@ -37,6 +41,10 @@ class TurnResult:
     text: str
     trace: list[ModelStep] = field(default_factory=lambda: list[ModelStep]())
     failed: bool = False
+    # Set when the graph is paused for the user's OK: the approval payload
+    # {tool, args_summary, human_summary, tool_call_id}. `text` then holds its human_summary.
+    # Answer with TurnRunner.resume(); one payload at a time (several risky calls = several rounds).
+    pending: dict[str, Any] | None = None
 
 
 class TurnRunner:
@@ -65,30 +73,84 @@ class TurnRunner:
             lock = self._locks[thread_id] = asyncio.Lock()
         return lock
 
-    async def run(self, thread_id: str, user: UserCtx, message: str) -> TurnResult:
-        """One user message -> final reply + trace of this turn. Never raises on graph/LLM errors.
+    async def _guarded(
+        self,
+        thread_id: str,
+        config: RunnableConfig,
+        turn: Callable[[], Awaitable[dict[str, Any]]],
+        *,
+        resuming: bool,
+    ) -> TurnResult:
+        """Run one graph call under the thread lock and shape its output (never raises).
 
-        Turns on the same thread run one after another (the checkpoint is read-modify-write, so
-        interleaving would lose or duplicate messages); different threads run concurrently.
+        Guards both ways against a paused thread: a new message must not be appended after an
+        unanswered tool_call (the API would reject the history), and `Command(resume)` on a thread
+        that is not paused would re-run the graph from its start. A new message while paused
+        re-asks the same question instead.
         """
-        config: RunnableConfig = {
-            "configurable": {
-                "user_id": str(user.user_id),
-                "timezone": user.timezone,
-                "thread_id": thread_id,
-            }
-        }
         async with self._lock(thread_id):
             try:
-                out = await run_turn(self._graph, [HumanMessage(message)], config)
+                snapshot = await self._graph.aget_state(config)
+                paused = snapshot.interrupts[0].value if snapshot.interrupts else None
+                if paused is not None and not resuming:
+                    return TurnResult(str(paused["human_summary"]), pending=paused)
+                if paused is None and resuming:
+                    return TurnResult(NOTHING_PENDING_REPLY)
+                out = await turn()
             except Exception as e:  # boundary: an interface must always be able to answer
                 logger.error(
                     "turn failed (%s)", type(e).__name__, exc_info=get_settings().log_content
                 )
                 return TurnResult(ERROR_REPLY, failed=True)
         messages = out["messages"]
+        trace = extract_trace(messages)
+        if interrupts := out.get("__interrupt__"):
+            payload: dict[str, Any] = interrupts[0].value
+            return TurnResult(str(payload["human_summary"]), trace, pending=payload)
         text = final_text(messages)
         if text is None:
             logger.error("turn produced no assistant text")
-            return TurnResult(ERROR_REPLY, extract_trace(messages), failed=True)
-        return TurnResult(text, extract_trace(messages))
+            return TurnResult(ERROR_REPLY, trace, failed=True)
+        return TurnResult(text, trace)
+
+    @staticmethod
+    def _config(thread_id: str, user: UserCtx) -> RunnableConfig:
+        return {
+            "configurable": {
+                "user_id": str(user.user_id),
+                "timezone": user.timezone,
+                "thread_id": thread_id,
+            }
+        }
+
+    async def run(self, thread_id: str, user: UserCtx, message: str) -> TurnResult:
+        """One user message -> final reply + trace of this turn. Never raises on graph/LLM errors.
+
+        Turns on the same thread run one after another (the checkpoint is read-modify-write, so
+        interleaving would lose or duplicate messages); different threads run concurrently.
+        """
+        config = self._config(thread_id, user)
+        return await self._guarded(
+            thread_id,
+            config,
+            lambda: run_turn(self._graph, [HumanMessage(message)], config),
+            resuming=False,
+        )
+
+    async def resume(
+        self,
+        thread_id: str,
+        user: UserCtx,
+        decision: Literal["approve", "reject"],
+        reason: str | None = None,
+    ) -> TurnResult:
+        """Answer the thread's pending approval; the turn continues and may pause again.
+
+        `reason` is accepted for the interface contract but not used yet: the graph only needs
+        approve/reject (a rejection reaches the model as REJECTED_BY_USER).
+        """
+        config = self._config(thread_id, user)
+        answer = {"decision": decision, "reason": reason}
+        return await self._guarded(
+            thread_id, config, lambda: resume_turn(self._graph, answer, config), resuming=True
+        )

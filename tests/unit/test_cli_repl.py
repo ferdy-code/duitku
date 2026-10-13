@@ -60,3 +60,20 @@ def test_cli_identity_is_stable_distinct_and_never_a_telegram_id() -> None:
     assert cli_telegram_id("a") == cli_telegram_id("a")
     assert cli_telegram_id("a") != cli_telegram_id("b")
     assert cli_telegram_id("a") < 0
+
+
+async def test_pending_approval_asks_and_resumes() -> None:
+    answers: list[str] = []
+
+    async def run(text: str) -> TurnResult:
+        return TurnResult("Hapus kopi Rp18.000?", pending={"human_summary": "x"})
+
+    async def decide(decision: str) -> TurnResult:
+        answers.append(decision)
+        return TurnResult(f"hasil {decision}")
+
+    out = io.StringIO()
+    await repl(run, stdin=io.StringIO("hapus\ny\nhapus\nnggak\nhapus\n"), out=out, decide=decide)
+    # 3rd turn: stdin is exhausted at the prompt (EOF) -> rejected, not approved
+    assert answers == ["approve", "reject", "reject"]
+    assert "Setuju? [y/n]" in out.getvalue() and "hasil approve" in out.getvalue()

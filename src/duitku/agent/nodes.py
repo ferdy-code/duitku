@@ -36,6 +36,11 @@ STEP_LIMIT_FALLBACK = (
     "Maaf, aku butuh terlalu banyak langkah untuk permintaan ini dan berhenti di tengah jalan. "
     "Coba ulangi dengan lebih singkat atau pecah jadi beberapa pesan ya."
 )
+REJECTED_BY_USER = error(
+    "REJECTED_BY_USER",
+    "The user declined this action; nothing was changed.",
+    "Tell the user briefly that it was cancelled. Do not retry or ask again.",
+)
 _DEFAULT_SLUGS = tuple(slug for slug, _ in DEFAULT_CATEGORIES)
 
 
@@ -106,10 +111,14 @@ def make_tools_node(
         """
         last = state["messages"][-1]
         assert isinstance(last, AIMessage)
+        rejected = set(state.get("rejected_call_ids", []))  # set by approval
         out: list[ToolMessage] = []
         for call in last.tool_calls:
             call_id = call["id"]
             if not call_id:  # providers always send ids; nothing to pair a result with otherwise
+                continue
+            if call_id in rejected:  # the user said no: answer the id, never execute
+                out.append(_tool_message(REJECTED_BY_USER, call_id, call["name"]))
                 continue
             tool = by_name.get(call["name"])
             if tool is None:
@@ -142,7 +151,8 @@ def make_tools_node(
                         bad["name"],
                     )
                 )
-        return {"messages": out}
+        # Consumed: clear so a stale id can never match a later call (providers may reuse ids).
+        return {"messages": out, "rejected_call_ids": []}
 
     return run_tools
 

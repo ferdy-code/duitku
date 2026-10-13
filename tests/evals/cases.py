@@ -2,7 +2,7 @@
 
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
@@ -26,6 +26,8 @@ class Seed(_Strict):
 class Turn(_Strict):
     user: str
     thread: str = "main"  # turns with the same name share a thread; a new name = a NEW thread
+    # Answer to an approval the turn pauses on; None = leave it pending (the case ends paused).
+    decide: Literal["approve", "reject"] | None = None
 
 
 class ToolExpect(_Strict):
@@ -56,6 +58,11 @@ class MemoryExpect(_Strict):
     forbid_digits: str | None = None
 
 
+class ApprovalExpect(_Strict):
+    tool: str  # a pause for this tool's approval must have been seen
+    expenses_at_pause: int | None = None  # live expense rows when the pause happened
+
+
 class Expect(_Strict):
     tool_calls: list[ToolExpect] = []  # must appear in this order (other calls may interleave)
     no_tool_calls: list[str] = []
@@ -64,6 +71,8 @@ class Expect(_Strict):
     reply_asks: bool = False  # reply contains a question mark (asks for clarification)
     reply_no_question: bool = False  # reply contains no question mark
     memories: MemoryExpect | None = None
+    approval: ApprovalExpect | None = None
+    all_calls_answered: bool = False  # every tool call of every step got an observation
     reply_contains_any: list[str] = []  # case-insensitive
     reply_total_of_range: tuple[date, date] | None = None  # reply states SQL total of this range
     max_steps: int = Field(gt=0)  # model calls over all turns

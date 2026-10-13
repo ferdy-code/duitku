@@ -63,6 +63,9 @@ async def test_config_ids_come_from_the_user_row_not_the_message(
     seen: list[dict[str, Any]] = []
 
     class FakeGraph:
+        async def aget_state(self, config: Any) -> Any:
+            return SimpleNamespace(interrupts=())
+
         async def ainvoke(self, initial: Any, config: dict[str, Any]) -> dict[str, Any]:
             seen.append(config["configurable"])
             return {"messages": [*initial["messages"], AIMessage("ok")]}
@@ -133,6 +136,9 @@ async def test_same_thread_serializes_different_threads_do_not(
     peak = {"same": 0, "all": 0}
 
     class SlowGraph:
+        async def aget_state(self, config: Any) -> Any:
+            return SimpleNamespace(interrupts=())
+
         async def ainvoke(self, initial: Any, config: dict[str, Any]) -> dict[str, Any]:
             tid = config["configurable"]["thread_id"]
             active[tid] = active.get(tid, 0) + 1

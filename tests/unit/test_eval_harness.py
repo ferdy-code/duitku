@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 from tests.evals.cases import Case, load_cases
-from tests.evals.checks import DbRow, MemRow, Observed, check_case, numbers_in
+from tests.evals.checks import Approval, DbRow, MemRow, Observed, check_case, numbers_in
 from tests.evals.report import CaseResult, render_table, summarize
 from tests.evals.runner import eval_db_url, reset_eval_db
 
@@ -25,9 +25,10 @@ def _step(*calls: tuple[str, dict[str, object]]) -> ModelStep:
     return ModelStep(calls=[ToolStep(n, a, "{}") for n, a in calls], input_tokens=10)
 
 
-def test_shipped_cases_load_and_cover_e01_to_e19b() -> None:
+def test_shipped_cases_load_and_cover_shipped_ids() -> None:
     cases = load_cases(CASES_YAML)
     want = [f"E-{i:02d}" for i in range(1, 11)] + ["E-15", "E-16", "E-17", "E-17b"]
+    want[10:10] = ["E-14", "E-23"]
     want += ["E-18", "E-19", "E-19b"]
     assert [c.id for c in cases] == want
 
@@ -138,3 +139,20 @@ def test_eval_db_name_ends_with_test_and_drop_guard() -> None:
     assert url.endswith("/duitku_eval_test")
     with pytest.raises(ValueError, match="_test"):
         reset_eval_db("postgresql+psycopg://u:p@h:1/duitku")
+
+
+def test_approval_checks() -> None:
+    case = next(c for c in load_cases(CASES_YAML) if c.id == "E-23")
+    steps = [_step(("add_expense", {}), ("delete_expense", {}))]
+    rows = [DbRow(50000, "transport", None, date(2026, 10, 12))]
+    asked = [Approval("delete_expense", 1)]
+    assert check_case(case, Observed(steps, ["batal"], rows, approvals=asked)) == []
+    never = check_case(case, Observed(steps, ["batal"], rows))
+    assert any("no approval requested" in f for f in never)
+    early = check_case(
+        case, Observed(steps, ["x"], rows, approvals=[Approval("delete_expense", 0)])
+    )
+    assert any("0 expense rows at pause" in f for f in early)
+    dangling = [ModelStep(calls=[ToolStep("delete_expense", {}, "")])]
+    bad = check_case(case, Observed(dangling, ["x"], rows, approvals=asked))
+    assert any("no observation" in f for f in bad)
