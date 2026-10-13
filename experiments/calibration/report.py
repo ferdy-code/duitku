@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from calibration.analysis import Summary
+from calibration.api_runner import ApiPerf
 from calibration.metrics import Operating
 from calibration.models import ModelSpec, Perf
 from calibration.pairs import DedupePair, RecallPair
@@ -12,7 +13,8 @@ from calibration.pairs import DedupePair, RecallPair
 @dataclass
 class ModelRun:
     spec: ModelSpec
-    perf: Perf | None = None
+    perf: Perf | ApiPerf | None = None
+    reused: bool = False  # scores rebuilt from a committed report (no perf measured here)
     recall_scores: list[float] = field(default_factory=lambda: list[float]())
     dedupe_scores: list[float] = field(default_factory=lambda: list[float]())
     recall: Summary | None = None
@@ -52,6 +54,9 @@ def _family_table(title: str, runs: Sequence[ModelRun], pick: str, pos: str, neg
 
 
 def _perf_table(runs: Sequence[ModelRun]) -> list[str]:
+    runs = [r for r in runs if not r.reused and not r.spec.api_model]
+    if not runs:
+        return []
     out = [
         "### Cost (CPU)",
         "",
@@ -61,6 +66,8 @@ def _perf_table(runs: Sequence[ModelRun]) -> list[str]:
     ]
     for r in runs:
         p = r.perf
+        if isinstance(p, ApiPerf):
+            continue
         if p is None:
             out.append(f"| {r.spec.key} | {r.spec.dim} | FAILED: {r.error} | | | | | | |")
             continue
@@ -71,6 +78,28 @@ def _perf_table(runs: Sequence[ModelRun]) -> list[str]:
             f"| {p.torch_threads} |"
         )
     return [*out, ""]
+
+
+def _api_perf_table(runs: Sequence[ModelRun]) -> list[str]:
+    rows = [r for r in runs if isinstance(r.perf, ApiPerf)]
+    errs = [f"- {r.spec.key}: {r.error}" for r in runs if r.error and r.spec.api_model]
+    if not rows and not errs:
+        return []
+    out = [
+        "### Cost (gateway, from this machine)",
+        "",
+        "| model | dim | 1 text ms median / p95 | 32 texts ms | tokens used (whole run) |",
+        "|---|---|---|---|---|",
+    ]
+    for r in rows:
+        p = r.perf
+        assert isinstance(p, ApiPerf)
+        tok = str(p.tokens_used) if p.tokens_used else "not reported"
+        out.append(
+            f"| {r.spec.key} | {p.dim} | {p.single_ms_median:.0f} / {p.single_ms_p95:.0f} "
+            f"| {p.batch32_ms:.0f} | {tok} |"
+        )
+    return [*out, "", *(["Errors:", *errs, ""] if errs else [])]
 
 
 def _supersede(runs: Sequence[ModelRun], pairs: Sequence[DedupePair]) -> list[str]:
@@ -92,7 +121,7 @@ def _supersede(runs: Sequence[ModelRun], pairs: Sequence[DedupePair]) -> list[st
 def _appendix(
     runs: Sequence[ModelRun], rp: Sequence[RecallPair], dp: Sequence[DedupePair]
 ) -> list[str]:
-    ok = [r for r in runs if r.perf is not None]
+    ok = [r for r in runs if r.recall_scores]
     head = " | ".join(r.spec.key for r in ok)
     sep = "|".join("---" for _ in range(len(ok) + 5))
     out = [
@@ -113,11 +142,16 @@ def _appendix(
     return [*out, ""]
 
 
-def render(runs: Sequence[ModelRun], rp: Sequence[RecallPair], dp: Sequence[DedupePair]) -> str:
+def render(
+    runs: Sequence[ModelRun],
+    rp: Sequence[RecallPair],
+    dp: Sequence[DedupePair],
+    title: str = "T-303 memory threshold calibration",
+) -> str:
     done = [r for r in runs if r.recall is not None]
     strict = [p for p in dp if p.label != "supersede"]
     lines = [
-        "# T-303 memory threshold calibration",
+        f"# {title}",
         "",
         f"Dataset: {len(rp)} recall pairs ({sum(p.relevant for p in rp)} relevant), "
         f"{len(strict)} dedupe pairs ({sum(p.label == 'dup' for p in strict)} dup / "
@@ -131,6 +165,7 @@ def render(runs: Sequence[ModelRun], rp: Sequence[RecallPair], dp: Sequence[Dedu
         *_family_table("Dedupe (memory vs memory)", done, "dedupe", "dup", "distinct"),
         *_supersede(done, dp),
         *_perf_table(runs),
+        *_api_perf_table(runs),
         *_appendix(done, rp, dp),
     ]
     return "\n".join(lines)

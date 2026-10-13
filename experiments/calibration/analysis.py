@@ -2,21 +2,29 @@
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Protocol
 
 from calibration import metrics
-from calibration.models import Runner, cosine
+from calibration.models import cosine
 from calibration.pairs import DedupePair, RecallPair
 
 
-def score_recall(r: Runner, pairs: Sequence[RecallPair]) -> list[float]:
-    q = r.embed([p.query for p in pairs], r.spec.query_prefix)
-    m = r.embed([p.memory for p in pairs], r.spec.passage_prefix)
+class Scorer(Protocol):
+    """Local `Runner` and gateway `ApiRunner` both apply the model's own prefixes."""
+
+    def embed_queries(self, texts: Sequence[str]) -> dict[str, list[float]]: ...
+    def embed_passages(self, texts: Sequence[str]) -> dict[str, list[float]]: ...
+
+
+def score_recall(r: Scorer, pairs: Sequence[RecallPair]) -> list[float]:
+    q = r.embed_queries([p.query for p in pairs])
+    m = r.embed_passages([p.memory for p in pairs])
     return [cosine(q[p.query], m[p.memory]) for p in pairs]
 
 
-def score_dedupe(r: Runner, pairs: Sequence[DedupePair]) -> list[float]:
+def score_dedupe(r: Scorer, pairs: Sequence[DedupePair]) -> list[float]:
     # `save` embeds both sides as passages, so dedupe is passage-vs-passage.
-    v = r.embed([t for p in pairs for t in (p.a, p.b)], r.spec.passage_prefix)
+    v = r.embed_passages([t for p in pairs for t in (p.a, p.b)])
     return [cosine(v[p.a], v[p.b]) for p in pairs]
 
 

@@ -17,6 +17,11 @@ class ModelSpec:
     dim: int
     query_prefix: str
     passage_prefix: str
+    api_model: str = (
+        ""  # non-empty: served by the OpenAI-compatible gateway (calibration/api_runner)
+    )
+    dimensions: int | None = None  # API only: request truncated output (3-small/3-large)
+    no_instruction: bool = False  # API only: drop the model's query instruction (ablation)
 
 
 # E5 needs prefixes (reused from production so they cannot drift). BGE-M3 needs NONE: its model
@@ -24,6 +29,33 @@ class ModelSpec:
 MODELS: dict[str, ModelSpec] = {
     "e5": ModelSpec("e5", "intfloat/multilingual-e5-small", 384, QUERY_PREFIX, PASSAGE_PREFIX),
     "bge": ModelSpec("bge", "BAAI/bge-m3", 1024, "", ""),
+    # Gateway models; prefixes/instructions live in memory/embeddings_api.API_MODELS.
+    "api-bge-m3": ModelSpec("api-bge-m3", "bge-m3 (API)", 1024, "", "", "bge-m3"),
+    "api-qwen3": ModelSpec(
+        "api-qwen3", "qwen3-embedding-0.6b (API)", 1024, "", "", "qwen3-embedding-0.6b"
+    ),
+    "api-qwen3-noinst": ModelSpec(
+        "api-qwen3-noinst",
+        "qwen3 no instruction",
+        1024,
+        "",
+        "",
+        "qwen3-embedding-0.6b",
+        no_instruction=True,
+    ),
+    "api-3small": ModelSpec(
+        "api-3small", "text-embedding-3-small", 1536, "", "", "text-embedding-3-small"
+    ),
+    "api-3small-384": ModelSpec(
+        "api-3small-384", "text-embedding-3-small @384", 384, "", "", "text-embedding-3-small", 384
+    ),
+    "api-3large": ModelSpec(
+        "api-3large", "text-embedding-3-large", 3072, "", "", "text-embedding-3-large"
+    ),
+    "api-3large-384": ModelSpec(
+        "api-3large-384", "text-embedding-3-large @384", 384, "", "", "text-embedding-3-large", 384
+    ),
+    "api-mistral": ModelSpec("api-mistral", "mistral-embed", 1024, "", "", "mistral-embed"),
 }
 
 
@@ -89,6 +121,12 @@ class Runner:
         """Map ORIGINAL text -> vector (prefix applied before encoding)."""
         by_prefixed = self.encode([prefix + t for t in texts])
         return {t: by_prefixed[prefix + t] for t in texts}
+
+    def embed_queries(self, texts: Sequence[str]) -> dict[str, list[float]]:
+        return self.embed(texts, self.spec.query_prefix)
+
+    def embed_passages(self, texts: Sequence[str]) -> dict[str, list[float]]:
+        return self.embed(texts, self.spec.passage_prefix)
 
     def measure(self, sample: Sequence[str], runs: int = 30) -> Perf:
         texts = [self.spec.passage_prefix + t for t in sample]
