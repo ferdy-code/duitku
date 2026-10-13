@@ -12,6 +12,7 @@ from duitku.interfaces.runner import TurnRunner
 from duitku.interfaces.telegram import texts
 from duitku.interfaces.telegram.approval import send_result
 from duitku.interfaces.telegram.formatting import send_reply, typing_indicator
+from duitku.observability.spans import last_trace_id
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,11 @@ async def on_text(update: Update, context: Ctx) -> None:
 
 async def on_error(update: object, context: Ctx) -> None:
     """Never raises: log the exception class only (messages can carry content or the token URL)."""
-    logger.error("update handler failed (%s)", type(context.error).__name__)
+    logger.error(
+        "update handler failed (%s)",
+        type(context.error).__name__,
+        extra={"trace_id": last_trace_id()},  # of this update's last agent.run, if it got that far
+    )
     chat = update.effective_chat if isinstance(update, Update) else None
     if chat is None:
         return

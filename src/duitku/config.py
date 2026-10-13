@@ -60,7 +60,8 @@ class Settings(BaseSettings):
     short_term_max_tokens: int = Field(default=6000, ge=1)
 
     # --- Observability ---
-    otel_exporter_otlp_endpoint: str = "http://localhost:4317"
+    # Base URL of an OTLP/HTTP receiver (default port 4318, NOT the gRPC 4317). Empty = no export.
+    otel_exporter_otlp_endpoint: str = ""
     otel_service_name: str = "duitku"
     log_content: bool = False
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"

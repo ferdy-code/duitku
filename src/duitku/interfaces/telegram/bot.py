@@ -21,6 +21,7 @@ from duitku.config import ConfigError, Settings, get_settings
 from duitku.interfaces.runner import TurnRunner
 from duitku.interfaces.telegram.app import ALLOWED_UPDATES, App, register
 from duitku.memory.embeddings import warm_up_embedder
+from duitku.observability.tracing import setup_observability
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +73,7 @@ def build_app(settings: Settings) -> App:
 def main() -> int:
     try:
         settings = get_settings()
-        logging.basicConfig(level=settings.log_level)
+        setup_observability()  # JSON logs; OTLP export only if OTEL_EXPORTER_OTLP_ENDPOINT is set
         quiet_http_loggers()
         app = build_app(settings)
         app.run_polling(allowed_updates=ALLOWED_UPDATES)

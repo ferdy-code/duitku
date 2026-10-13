@@ -361,7 +361,12 @@ async def test_reject_then_resume_again_changes_nothing(
     after_raw = await resume_turn(graph, APPROVE, graph_cfg)  # a late "approve" must not revive it
     assert codes(after_raw["messages"]) == {"d1": "REJECTED_BY_USER"}
     assert (len(llm.seen), probe.body_runs) == settled
-    assert await snapshot(sm) == before and await live_amounts(sm, user.user_id) == [18_000]
+    after = await snapshot(sm)
+    # T-406: the runner logs each graph call (pause + resume); nothing else changed. The two
+    # guarded calls (nothing pending / finished thread) ran no turn, so they add no rows.
+    assert after["agent_runs"] == before["agent_runs"] + 2
+    assert {**after, "agent_runs": 0} == {**before, "agent_runs": 0}
+    assert await live_amounts(sm, user.user_id) == [18_000]
 
 
 # --- 5. crash between pause and resume -----------------------------------------------------

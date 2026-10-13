@@ -207,6 +207,7 @@ def test_main_exits_2_without_polling_and_without_leaking(
     ids: list[int],
 ) -> None:
     monkeypatch.setattr(bot_mod, "get_settings", lambda: _settings(token, ids))
+    monkeypatch.setattr(bot_mod, "setup_observability", lambda: False)  # no exporter/log rewiring
     monkeypatch.setattr(bot_mod.Application, "builder", None)  # building an app would crash
     assert bot_mod.main() == 2
     out = capsys.readouterr()

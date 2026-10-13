@@ -18,6 +18,7 @@ from duitku.agent.trimming import trim_history
 from duitku.db.engine import get_sessionmaker
 from duitku.db.repositories import categories
 from duitku.domain.categories import DEFAULT_CATEGORIES
+from duitku.observability.spans import llm_call, record_llm_usage, tool_event
 from duitku.tools.base import Envelope, error, get_context
 
 logger = logging.getLogger(__name__)
@@ -72,6 +73,7 @@ def make_agent_node(
     max_history_tokens: int,
 ) -> Node:
     bound = llm.bind_tools(list(tools))
+    model_name = str(getattr(llm, "model_name", None) or "unknown")
 
     async def agent(state: AgentState, config: RunnableConfig) -> dict[str, Any]:
         ctx = get_context(config)  # user_id/timezone: config only, never LLM args
@@ -86,7 +88,10 @@ def make_agent_node(
             SystemMessage(system),
             *trim_history(state["messages"], max_history_tokens),
         ]
-        return {"messages": [await bound.ainvoke(view, config)]}
+        with llm_call(model_name) as span:
+            reply = await bound.ainvoke(view, config)
+            record_llm_usage(span, reply)
+        return {"messages": [reply]}
 
     return agent
 
@@ -118,10 +123,12 @@ def make_tools_node(
             if not call_id:  # providers always send ids; nothing to pair a result with otherwise
                 continue
             if call_id in rejected:  # the user said no: answer the id, never execute
+                tool_event(call["name"] if call["name"] in by_name else "unknown", "rejected")
                 out.append(_tool_message(REJECTED_BY_USER, call_id, call["name"]))
                 continue
             tool = by_name.get(call["name"])
             if tool is None:
+                tool_event("unknown", "error", "UNKNOWN_TOOL")  # LLM-chosen name: bounded label
                 out.append(
                     _tool_message(
                         error("UNKNOWN_TOOL", "No such tool.", f"Valid tools: {sorted(by_name)}"),

@@ -22,7 +22,9 @@ from duitku.agent.graph import Graph, resume_turn, run_turn
 from duitku.config import get_settings
 from duitku.db.engine import get_sessionmaker
 from duitku.db.repositories import users
+from duitku.interfaces.run_log import record_run, run_status
 from duitku.interfaces.trace import ModelStep, extract_trace, final_text
+from duitku.observability.spans import RunStats, agent_run, last_trace_id
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +78,7 @@ class TurnRunner:
     async def _guarded(
         self,
         thread_id: str,
+        user: UserCtx,
         config: RunnableConfig,
         turn: Callable[[], Awaitable[dict[str, Any]]],
         *,
@@ -88,6 +91,7 @@ class TurnRunner:
         that is not paused would re-run the graph from its start. A new message while paused
         re-asks the same question instead.
         """
+        run: RunStats | None = None
         async with self._lock(thread_id):
             try:
                 snapshot = await self._graph.aget_state(config)
@@ -96,12 +100,30 @@ class TurnRunner:
                     return TurnResult(str(paused["human_summary"]), pending=paused)
                 if paused is None and resuming:
                     return TurnResult(NOTHING_PENDING_REPLY)
-                out = await turn()
+                with agent_run(user.user_id, "resume" if resuming else "run") as run:
+                    out = await turn()
             except Exception as e:  # boundary: an interface must always be able to answer
                 logger.error(
-                    "turn failed (%s)", type(e).__name__, exc_info=get_settings().log_content
+                    "turn failed (%s)",
+                    type(e).__name__,
+                    exc_info=get_settings().log_content,
+                    extra={"trace_id": last_trace_id()},
                 )
-                return TurnResult(ERROR_REPLY, failed=True)
+                result = TurnResult(ERROR_REPLY, failed=True)
+            else:
+                result = self._shape(out)
+        if run is not None:  # a graph call happened: one agent_runs row for this segment
+            await record_run(
+                self._sessionmaker,
+                user.user_id,
+                thread_id,
+                run,
+                run_status(result.failed, result.pending is not None, result.text),
+            )
+        return result
+
+    @staticmethod
+    def _shape(out: dict[str, Any]) -> TurnResult:
         messages = out["messages"]
         trace = extract_trace(messages)
         if interrupts := out.get("__interrupt__"):
@@ -109,7 +131,7 @@ class TurnRunner:
             return TurnResult(str(payload["human_summary"]), trace, pending=payload)
         text = final_text(messages)
         if text is None:
-            logger.error("turn produced no assistant text")
+            logger.error("turn produced no assistant text", extra={"trace_id": last_trace_id()})
             return TurnResult(ERROR_REPLY, trace, failed=True)
         return TurnResult(text, trace)
 
@@ -132,6 +154,7 @@ class TurnRunner:
         config = self._config(thread_id, user)
         return await self._guarded(
             thread_id,
+            user,
             config,
             lambda: run_turn(self._graph, [HumanMessage(message)], config),
             resuming=False,
@@ -152,5 +175,9 @@ class TurnRunner:
         config = self._config(thread_id, user)
         answer = {"decision": decision, "reason": reason}
         return await self._guarded(
-            thread_id, config, lambda: resume_turn(self._graph, answer, config), resuming=True
+            thread_id,
+            user,
+            config,
+            lambda: resume_turn(self._graph, answer, config),
+            resuming=True,
         )

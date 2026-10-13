@@ -28,13 +28,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from duitku.config import get_settings
 from duitku.db.engine import get_sessionmaker
 from duitku.db.repositories import audit
+from duitku.observability.redact import redact_args
+from duitku.observability.spans import finish_tool, tool_call
 
 logger = logging.getLogger(__name__)
 
 Envelope = dict[str, Any]
 INTERNAL_ERROR = "INTERNAL_ERROR"
 INVALID_ARGUMENT = "INVALID_ARGUMENT"
-REDACTED = "[redacted]"
 
 
 # --- envelope -------------------------------------------------------------------------------
@@ -101,13 +102,6 @@ def get_context(config: RunnableConfig) -> ToolContext:
 # --- audit decorator ------------------------------------------------------------------------
 
 
-def redact_args(args: dict[str, Any], log_content: bool) -> dict[str, Any]:
-    """JSON-safe copy of args; values replaced by a marker unless LOG_CONTENT=true."""
-    if not log_content:
-        return {k: REDACTED for k in args}
-    return json.loads(json.dumps(args, default=str))
-
-
 async def _write_audit(
     sm: async_sessionmaker[AsyncSession] | None,
     user_id: uuid.UUID,
@@ -138,23 +132,32 @@ def audited(
             except ContextError as e:
                 logger.error("tool %s: %s", tool_name, e)
                 return _internal_error()  # no user_id -> nothing to attribute an audit row to
-            try:
-                result = await fn(*args, **kwargs)
-            except ValidationError as e:
-                result = _invalid(_validation_message(e))
-            except ValueError as e:  # deliberate domain validation (e.g. amount parser)
-                result = _invalid(str(e) or "Invalid argument.")
-            except Exception as e:
-                # Type only unless LOG_CONTENT=true: messages/tracebacks can embed user content.
-                logger.error(
-                    "tool %s failed: %s", tool_name, type(e).__name__, exc_info=log_content
+            with tool_call(tool_name) as span:
+                try:
+                    result = await fn(*args, **kwargs)
+                except ValidationError as e:
+                    result = _invalid(_validation_message(e))
+                except ValueError as e:  # deliberate domain validation (e.g. amount parser)
+                    result = _invalid(str(e) or "Invalid argument.")
+                except Exception as e:
+                    # Type only unless LOG_CONTENT=true: messages/tracebacks can embed user content.
+                    logger.error(
+                        "tool %s failed: %s", tool_name, type(e).__name__, exc_info=log_content
+                    )
+                    result = _internal_error()
+                err_code = None if result["ok"] else result["error"]["code"]
+                tool_args = {k: v for k, v in kwargs.items() if k not in ("config", "tool_call_id")}
+                finish_tool(
+                    span,
+                    tool_name,
+                    "ok" if result["ok"] else "error",
+                    err_code,
+                    args=tool_args,
+                    log_content=log_content,
                 )
-                result = _internal_error()
 
-            err_code = None if result["ok"] else result["error"]["code"]
             call_id = kwargs.get("tool_call_id")
             try:
-                tool_args = {k: v for k, v in kwargs.items() if k not in ("config", "tool_call_id")}
                 await _write_audit(
                     sessionmaker,
                     ctx.user_id,

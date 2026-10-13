@@ -17,10 +17,11 @@ from typing import Literal, TextIO
 
 from duitku.agent.checkpointer import cli_thread_id, open_checkpointer
 from duitku.agent.graph import build_graph
-from duitku.config import ConfigError, get_settings
+from duitku.config import ConfigError
 from duitku.interfaces.runner import TurnResult, TurnRunner
 from duitku.interfaces.trace import format_trace
 from duitku.memory.embeddings import warm_up_embedder
+from duitku.observability.tracing import setup_observability
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +103,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     ap.add_argument("--thread", default=None, help="conversation name (default: the user name)")
     args = ap.parse_args(argv)
     try:
-        logging.basicConfig(level=get_settings().log_level)
+        setup_observability()  # JSON logs; OTLP export only if OTEL_EXPORTER_OTLP_ENDPOINT is set
         for noisy in ("httpx", "httpx2", "httpcore"):  # per-request INFO lines drown the REPL
             logging.getLogger(noisy).setLevel(logging.WARNING)
         # asyncio.run's own SIGINT handler only cancels the main task, which a blocking
