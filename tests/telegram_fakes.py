@@ -3,6 +3,7 @@ Application / handler chain / Message objects run without any network."""
 
 import itertools
 from collections.abc import Awaitable, Callable
+from types import SimpleNamespace
 from typing import Any
 
 from telegram import Update
@@ -47,14 +48,35 @@ class FakeBot(ExtBot[None]):
         return [e for e, _ in self._calls]
 
 
+def fake_result(text: str, pending: dict[str, Any] | None = None, failed: bool = False) -> Any:
+    """Shaped like `TurnResult` (only the fields the handlers read)."""
+    return SimpleNamespace(text=text, failed=failed, pending=pending)
+
+
+PENDING = {
+    "tool": "delete_expense",
+    "args_summary": "Kopi 18rb",
+    "human_summary": "Hapus pengeluaran: Kopi <Rp18.000> (12 Okt)?",
+    "tool_call_id": "c1",
+}
+
+
 class FakeRunner:
-    """Stands in for TurnRunner; `reply` may be a str, or a coroutine function for slow turns."""
+    """Stands in for TurnRunner; `reply` may be a str, or a coroutine function for slow turns.
+    `pending` makes `run` answer with a paused-for-approval result; `resumes` is a queue of
+    results for `resume` (default: an approval-agnostic "Selesai")."""
 
     def __init__(
-        self, reply: str | Callable[[], Awaitable[str]] = "ok", boom: Exception | None = None
+        self,
+        reply: str | Callable[[], Awaitable[str]] = "ok",
+        boom: Exception | None = None,
+        pending: dict[str, Any] | None = None,
+        resumes: list[Any] | None = None,
     ) -> None:
-        self.reply, self.boom = reply, boom
+        self.reply, self.boom, self.pending = reply, boom, pending
+        self.resumes = resumes or []
         self.runs: list[tuple[str, str]] = []
+        self.resume_calls: list[tuple[str, str]] = []
         self.resolved: list[int] = []
 
     async def resolve_user(self, telegram_user_id: int, display_name: str | None = None) -> Any:
@@ -66,7 +88,17 @@ class FakeRunner:
         if self.boom:
             raise self.boom
         text = self.reply if isinstance(self.reply, str) else await self.reply()
-        return type("R", (), {"text": text, "failed": False})()
+        if self.pending:
+            return fake_result(self.pending["human_summary"], self.pending)
+        return fake_result(text)
+
+    async def resume(
+        self, thread_id: str, user: Any, decision: str, reason: str | None = None
+    ) -> Any:
+        self.resume_calls.append((thread_id, decision))
+        if self.boom:
+            raise self.boom
+        return self.resumes.pop(0) if self.resumes else fake_result("Selesai")
 
 
 _ids = itertools.count(1)
@@ -106,3 +138,33 @@ def text_update(
     if text.startswith("/"):
         msg["entities"] = [{"type": "bot_command", "offset": 0, "length": len(text.split()[0])}]
     return Update.de_json({"update_id": next(_ids), "message": msg}, bot)
+
+
+def callback_update(
+    bot: FakeBot,
+    data: str | None = "appr:y",
+    user_id: int = 1,
+    chat_id: int | None = None,
+    chat_type: str = "private",
+    text: str = "Hapus pengeluaran: Kopi Rp18.000 (12 Okt)?",
+    accessible: bool = True,
+) -> Update:
+    """A button press on a bot message. `accessible=False` is a message too old to edit (Bot API
+    sends date 0 and no text)."""
+    chat = {"id": user_id if chat_id is None else chat_id, "type": chat_type}
+    message: dict[str, Any] = {
+        "message_id": next(_ids),
+        "date": 1 if accessible else 0,
+        "chat": chat,
+    }
+    if accessible:
+        message["text"] = text
+    query: dict[str, Any] = {
+        "id": str(next(_ids)),
+        "from": {"id": user_id, "is_bot": False, "first_name": "Tester"},
+        "chat_instance": "ci",
+        "message": message,
+    }
+    if data is not None:
+        query["data"] = data
+    return Update.de_json({"update_id": next(_ids), "callback_query": query}, bot)

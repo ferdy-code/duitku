@@ -1,10 +1,4 @@
-"""Command, text and error handlers.
-
-Only `/start` and `/bantuan` exist now; `/batal` and `/lupakan` arrive with later tasks.
-T-403 (approval): add a `CallbackQueryHandler(on_approval, pattern=r"^appr:(y|n)$")` in
-`app.build_application`, call `runner.resume_turn(...)` there, and add "callback_query" to
-`app.ALLOWED_UPDATES` and a callback branch to the guard (it only rate-limits `update.message`).
-"""
+"""Command, text and error handlers (approval buttons and `/batal` live in `approval.py`)."""
 
 import logging
 from typing import cast
@@ -16,6 +10,7 @@ from telegram.ext import ContextTypes
 from duitku.agent.checkpointer import tg_thread_id
 from duitku.interfaces.runner import TurnRunner
 from duitku.interfaces.telegram import texts
+from duitku.interfaces.telegram.approval import send_result
 from duitku.interfaces.telegram.formatting import send_reply, typing_indicator
 
 logger = logging.getLogger(__name__)
@@ -45,9 +40,9 @@ async def on_text(update: Update, context: Ctx) -> None:
     async with typing_indicator(context.bot, chat.id):
         ctx = await runner.resolve_user(user.id, user.full_name)
         result = await runner.run(tg_thread_id(chat.id), ctx, text)
-    await send_reply(
-        context.bot, chat.id, result.text
-    )  # a failed turn already holds a friendly text
+    # A failed turn already holds a friendly text; a paused thread (new or re-asked approval)
+    # comes back with `pending`, so the question is re-sent WITH buttons.
+    await send_result(context.bot, chat.id, result)
 
 
 async def on_error(update: object, context: Ctx) -> None:

@@ -213,11 +213,11 @@ def test_main_exits_2_without_polling_and_without_leaking(
     assert "SECRET-TOK" not in out.out + out.err and "TELEGRAM" in out.err
 
 
-def test_build_app_registers_guard_first_and_only_two_commands() -> None:
+def test_build_app_registers_guard_first_and_only_three_commands() -> None:
     app = bot_mod.build_app(_settings("123:abc", [1]))
     assert min(app.handlers) == -1 and len(app.handlers[-1]) == 1
     cmds = {c for h in app.handlers[0] for c in getattr(h, "commands", ())}
-    assert cmds == {"start", "bantuan"}
+    assert cmds == {"start", "bantuan", "batal"}
 
 
 def test_http_loggers_clamped() -> None:

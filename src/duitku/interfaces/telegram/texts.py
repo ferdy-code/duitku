@@ -27,5 +27,11 @@ HELP = (
     "- ingat: aku tidak suka kopi pahit\n\n"
     "Perintah:\n"
     "/start - perkenalan\n"
+    "/batal - batalkan permintaan konfirmasi yang sedang menunggu\n"
     "/bantuan - pesan ini"
 )
+
+BTN_APPROVE = "✅ Setuju"
+BTN_REJECT = "❌ Batal"
+OUTCOME_APPROVED = "✅ Disetujui"
+OUTCOME_REJECTED = "❌ Dibatalkan"

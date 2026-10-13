@@ -55,9 +55,13 @@ def make_guard(
         if user is None or chat is None or chat.type != ChatType.PRIVATE or user.id not in allowed:
             logger.warning("dropped update from a non-allowlisted source")  # no id, no content
             raise ApplicationHandlerStop
-        if update.message is not None and not limiter.allow(user.id):
-            try:
-                await context.bot.send_message(chat.id, RATE_LIMITED)
+        query = update.callback_query
+        if (update.message is not None or query is not None) and not limiter.allow(user.id):
+            try:  # a button press is answered (stops the spinner), a message gets a notice
+                if query is not None:
+                    await query.answer(RATE_LIMITED)
+                else:
+                    await context.bot.send_message(chat.id, RATE_LIMITED)
             except TelegramError as e:
                 logger.warning("rate-limit notice failed (%s)", type(e).__name__)
             raise ApplicationHandlerStop
