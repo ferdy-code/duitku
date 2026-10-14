@@ -30,6 +30,7 @@
 | 10 | `save_memory` | `content`, `kind` | Embed (`passage:`), dedupe, store (see `memory.md`) | DB | no |
 | 11 | `recall_memory` | `query`, `k ≤ 5 = 3` | Embed (`query:`), cosine search, threshold filter, update `last_recalled_at` | light | no |
 | 12 | `forget_memory` | `memory_id` | Delete a memory owned by the user | DB | no |
+| 13 | `compare_amounts` | `current_idr: int ≥ 0`, `previous_idr: int ≥ 0` | Pure arithmetic in Python (`Decimal`): return `difference_idr` (current − previous), `direction: higher\|lower\|same`, `percent_change` (1 decimal, `null` if previous is 0). Added in T-407: agent rule 1 forbids the LLM from computing differences, and E-12 failed until a tool returned one | no | no |
 
 ## `parse_idr_amount(text) -> int` (`domain/money.py`, pure, table-tested)
 
