@@ -1,0 +1,17 @@
+# Never bake secrets or user data into the image.
+.env
+.env.*
+!.env.example
+data/
+.git/
+.venv/
+.claude/
+.archify/
+.pytest_cache/
+.ruff_cache/
+.pyright/
+__pycache__/
+*.py[cod]
+tests/
+experiments/
+docs/

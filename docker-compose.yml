@@ -1,0 +1,27 @@
+# Only the app. Postgres (with pgvector) is EXTERNAL: installed on the host or another server.
+# Setup and operations: docs/ops.md
+services:
+  app:
+    build: .
+    image: duitku:latest
+    init: true
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Fixed paths inside the container (override .env); /data is the named volume below.
+      RECEIPT_DIR: /data/receipts
+      HF_HOME: /data/hf
+    extra_hosts:
+      # Lets DATABASE_URL use host.docker.internal to reach Postgres on the Docker host (Linux).
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - duitku-data:/data
+    # Migrations on every start are safe: `alembic upgrade head` is a no-op at head. `exec` replaces the shell so
+    # SIGTERM from `docker stop` reaches the bot (run_polling shuts down cleanly).
+    command: ["sh", "-c", "alembic upgrade head && exec python -m duitku.interfaces.telegram.bot"]
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
+volumes:
+  duitku-data:

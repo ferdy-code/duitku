@@ -1,10 +1,12 @@
-# Ops notes (no Docker; local/VPS Postgres)
+# Ops notes
 
-Run all commands from the repo root (they read `./.env`).
+Run all commands from the repo root (they read `./.env`). Local development has no Docker (see
+DECISIONS T-003); the Docker deploy below targets a VPS with Postgres on the host.
 
 ## Receipt retention (T-408)
 
-`uv run python -m duitku.ops.retention` deletes receipt image files older than
+`uv run python -m duitku.ops.retention` (local) or
+`docker compose run --rm app python -m duitku.ops.retention` (deployed) deletes receipt image files older than
 `RECEIPT_RETENTION_DAYS`. The `receipts` row and `extraction` stay. Idempotent; prints one summary
 line. Exit 1 = DB failure, 2 = config error; per-file errors are only counted in the summary.
 
@@ -20,7 +22,11 @@ Requires `pg_dump`/`pg_restore`/`psql`/`createdb` (postgresql-client, same major
 server) on PATH. Dumps hold all user data: keep `data/` uncommitted, mode 600, off shared disks.
 Test a restore into a scratch DB periodically, not only after a disaster.
 
-## Scheduling (systemd timer; cron alternative below)
+## Scheduling (host-level; Postgres is on the host)
+
+Two jobs: `scripts/backup.sh` (host, needs `pg_dump`) and the retention job (inside the app image, because
+`receipts.file_path` is an absolute path in the container's `/data/receipts`; run on the host it would
+count every file as `refused`). `-T` = no TTY, needed under systemd/cron.
 
 `/etc/systemd/system/duitku-maintenance.service`:
 
@@ -29,7 +35,7 @@ Test a restore into a scratch DB periodically, not only after a disaster.
 Type=oneshot
 WorkingDirectory=/opt/duitku
 ExecStart=/opt/duitku/scripts/backup.sh
-ExecStart=/usr/bin/env uv run python -m duitku.ops.retention
+ExecStart=/usr/bin/docker compose run --rm -T app python -m duitku.ops.retention
 ```
 
 `/etc/systemd/system/duitku-maintenance.timer`:
@@ -42,8 +48,92 @@ Persistent=true
 WantedBy=timers.target
 ```
 
-Enable: `systemctl enable --now duitku-maintenance.timer`. Cron equivalent:
-`15 3 * * * cd /opt/duitku && scripts/backup.sh && uv run python -m duitku.ops.retention >> data/ops.log 2>&1`.
+Enable: `systemctl enable --now duitku-maintenance.timer`; check `systemctl list-timers` and
+`journalctl -u duitku-maintenance`. Cron equivalent (root or a user in the `docker` group):
+`15 3 * * * cd /opt/duitku && scripts/backup.sh && docker compose run --rm -T app python -m duitku.ops.retention >> data/ops.log 2>&1`.
+Backups land in `/opt/duitku/data/backups` (outside Docker). Copy them off the VPS too (a dump on the
+same disk is not a backup against disk loss).
+
+## Deploy (Docker; Postgres external)
+
+Compose runs only the `app` service. Postgres 16+ with the `pgvector` extension is installed on the VPS
+host (or elsewhere). The container reaches the host DB as `host.docker.internal` (compose adds
+`extra_hosts: host.docker.internal:host-gateway`).
+
+### One-time host setup
+
+1. Database and role (the role needs to create the `vector` extension once, or create it as superuser first):
+   `CREATE ROLE duitku LOGIN PASSWORD '...'; CREATE DATABASE duitku OWNER duitku; \c duitku; CREATE EXTENSION vector;`
+2. Let Postgres accept connections from the Docker bridge: `listen_addresses = 'localhost,172.17.0.1'`
+   (or `'*'` behind a firewall) in `postgresql.conf`, and a `pg_hba.conf` line such as
+   `host duitku duitku 172.16.0.0/12 scram-sha-256` (covers docker0 and compose networks). Never open 5432 to
+   the internet. Reload Postgres.
+3. `.env` (copy `.env.example`, `chmod 600`). Use `host.docker.internal` as the DB host in BOTH URLs, e.g.
+   `DATABASE_URL=postgresql+psycopg://duitku:PASS@host.docker.internal:5432/duitku` and
+   `CHECKPOINT_DATABASE_URL=postgresql://duitku:PASS@host.docker.internal:5432/duitku`. Set
+   `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_USER_IDS`, `LLM_*`. `RECEIPT_DIR` and `HF_HOME` are forced to
+   `/data/...` by compose, whatever `.env` says. A real DB host works too (no `extra_hosts` needed then).
+4. So the host-side `scripts/backup.sh` can read the same `.env`, make the name resolve on the host:
+   `echo '127.0.0.1 host.docker.internal' | sudo tee -a /etc/hosts` (or run the script with `DATABASE_URL`
+   exported using `localhost`). Install `postgresql-client` (same major version as the server).
+
+### First deploy
+
+```bash
+git clone <repo> /opt/duitku && cd /opt/duitku      # then create .env as above
+docker compose build
+docker compose up -d
+docker compose logs -f app
+```
+
+Start order inside the container: `alembic upgrade head` (a no-op when already at head, so every
+restart is safe), then the bot. If migrations fail the container exits non-zero and `restart:
+unless-stopped` retries it in a loop: read the log, fix the DB/URL, `docker compose up -d` again.
+Expect a slow FIRST start: the E5 embedding model (~470 MB) is downloaded into the `duitku-data`
+volume (`/data/hf`) and loaded by the warm-up before polling begins; later starts reuse the cache.
+The image is about 2.2 GB (CPU-only torch + sentence-transformers are required by the local embedder;
+`ApiEmbedder` exists but is not wired into `get_embedder()`, see DECISIONS).
+
+Smoke test: send `/start` to the bot from an allowlisted account, then "kopi 18rb".
+
+### Update
+
+```bash
+cd /opt/duitku && scripts/backup.sh                  # always back up before a migration
+git pull && docker compose build && docker compose up -d
+docker compose logs --tail 50 app
+```
+
+### Rollback
+
+Code only (no new migration in the bad release): `git checkout <previous-tag-or-sha> && docker compose
+build && docker compose up -d`. If the bad release ran a migration, the old code may not match the
+schema: restore the pre-update backup into the live DB (see below, `--force`) or run
+`docker compose run --rm app alembic downgrade -1` BEFORE switching code (only if that migration has a
+tested downgrade). Tag good releases (`git tag deploy-YYYYmmdd`) so there is something to return to.
+
+### Logs, status, stop
+
+```bash
+docker compose ps
+docker compose logs -f --tail 100 app        # JSON lines; rotated by compose (5 x 10 MB)
+docker compose restart app
+docker compose down                          # keeps the volume (receipts + model cache)
+```
+
+### Restore test (do this once before trusting backups, then every few months)
+
+```bash
+scripts/backup.sh
+scripts/restore.sh data/backups/duitku-<latest>.dump duitku_restore_check   # scratch DB, not the live one
+export PGPASSWORD=...   # or ~/.pgpass
+psql -h localhost -U duitku duitku_restore_check -c "select count(*) from expenses"   # compare with the live DB
+psql -h localhost -U duitku duitku_restore_check -c "select count(*) from memories"
+```
+
+Row counts must match the live DB (allow for rows written since the dump). Check that the `memories`
+vector index exists (`\d memories`). Then `DROP DATABASE duitku_restore_check`. Disaster restore into the
+live DB: `docker compose stop app`, `scripts/restore.sh <dump> duitku --force`, `docker compose up -d`.
 
 ## Observability (T-406)
 
