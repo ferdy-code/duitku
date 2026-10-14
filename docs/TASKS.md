@@ -78,7 +78,7 @@ Goal: understand tool calling from first principles before using a framework.
   Read: `interfaces-ops.md`. AC: non-allowlisted ID never reaches the agent (test); handler errors don't crash the bot.
 - [x] **T-402 Approval node + `REQUIRES_APPROVAL`.** Including `delete_expense`.
   Read: `agent.md`. AC: fake-model tests: approve → tool runs; reject → no DB effect and agent responds sensibly; ToolMessage invariant holds.
-- [ ] **T-403 Approval in Telegram.** Inline buttons, callback → `resume_turn`, handling of messages while pending.
+- [x] **T-403 Approval in Telegram.** Inline buttons, callback → `resume_turn`, handling of messages while pending.
   Read: `interfaces-ops.md`. AC: delete flow works end-to-end on real Telegram (manual) + handler tests with fake updates.
 - [ ] **T-404 Receipts.** Photo handler → file + `receipts` row; `parse_receipt` (structured output + `warnings`); `add_expense(source="receipt")` triggers approval.
   Read: `tools.md`, `interfaces-ops.md`. AC: tested on ≥20 real receipts (minimarket, restaurant, e-commerce); accuracy of total/merchant logged (target ≥ 85%, G3); images never enter checkpoints.
