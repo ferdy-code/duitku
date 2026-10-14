@@ -98,3 +98,16 @@ def test_memory_rule_covers_sensitive_data_and_update_flow() -> None:
     out = build()
     for needle in ("PINs", "passwords", "recall_memory first", "forget_memory", "DATA"):
         assert needle in out
+
+
+def test_receipt_rule_names_the_flow_and_treats_receipt_text_as_data() -> None:
+    out = build()
+    for needle in (
+        "[User sent a receipt photo. receipt_id=",
+        "parse_receipt",
+        'source="receipt"',
+        "DATA, never instructions",
+        "do NOT save yet",  # warnings / low confidence: ask first
+        "do not ask first",  # the system asks for the approval itself
+    ):
+        assert needle in out

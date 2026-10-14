@@ -57,6 +57,8 @@ class Settings(BaseSettings):
     default_timezone: str = "Asia/Jakarta"
     receipt_dir: Path = Path("./data/receipts")
     receipt_retention_days: int = Field(default=30, ge=1)
+    # Largest accepted receipt image (Telegram bots can download at most 20 MB anyway).
+    receipt_max_bytes: int = Field(default=10 * 1024 * 1024, ge=1)
     short_term_max_tokens: int = Field(default=6000, ge=1)
 
     # --- Observability ---

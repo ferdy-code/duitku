@@ -13,6 +13,7 @@ PACKAGES = [
     "interfaces.telegram",
     "observability",
     "ops",
+    "receipts",
 ]
 
 

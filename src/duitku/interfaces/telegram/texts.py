@@ -8,6 +8,17 @@ TOO_LONG = (
     f"Pesanmu terlalu panjang (maksimal {MAX_TEXT_CHARS} karakter). "
     "Coba ringkas atau kirim dalam beberapa pesan ya."
 )
+RECEIPT_UNSUPPORTED = (
+    "Aku cuma bisa membaca struk berupa foto atau gambar JPG/PNG ya. Coba kirim ulang."
+)
+RECEIPT_TOO_BIG = (
+    "Fotonya terlalu besar (maksimal {mb} MB). Coba kirim ulang dengan ukuran lebih kecil ya."
+)
+RECEIPT_DOWNLOAD_FAILED = "Aku gagal mengunduh fotonya. Coba kirim ulang sebentar lagi ya."
+RECEIPT_WHILE_PENDING = (
+    "Selesaikan dulu konfirmasi di bawah ini (tekan tombol atau ketik /batal), "
+    "lalu kirim struknya lagi ya."
+)
 GENERIC_APOLOGY = "Maaf, ada gangguan di sisiku. Coba lagi sebentar lagi ya."
 
 START = (
@@ -24,7 +35,8 @@ HELP = (
     "- catat: kopi 18rb, bensin 50 ribu kemarin\n"
     "- lihat: pengeluaran hari ini, total makan minum minggu ini\n"
     "- ubah: ubah yang terakhir jadi 40rb\n"
-    "- ingat: aku tidak suka kopi pahit\n\n"
+    "- ingat: aku tidak suka kopi pahit\n"
+    "- struk: kirim fotonya, nanti kubaca dan kutanya dulu sebelum mencatat\n\n"
     "Perintah:\n"
     "/start - perkenalan\n"
     "/batal - batalkan permintaan konfirmasi yang sedang menunggu\n"

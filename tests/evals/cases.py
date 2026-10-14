@@ -17,7 +17,15 @@ class SeedMemory(_Strict):
     content: str
 
 
+class SeedReceipt(_Strict):
+    """A stored receipt whose photo the STUBBED vision model "reads" as `extraction` (the real
+    parse_receipt tool still runs on top). Turns refer to it as `{receipt_id}`."""
+
+    extraction: dict[str, Any]
+
+
 class Seed(_Strict):
+    receipt: SeedReceipt | None = None
     fixture: str | None = None  # name in runner.SEED_FIXTURES
     memories: list[SeedMemory] = []  # saved through memory.store.save with the REAL embedder
     remove_categories: list[str] = []  # slugs deleted from the user's default categories
@@ -84,6 +92,11 @@ class Case(_Strict):
     seed: Seed = Seed()
     turns: list[Turn] = Field(min_length=1)
     expect: Expect
+
+
+def fill_receipt_id(text: str, receipt_id: object) -> str:
+    """Replace the `{receipt_id}` placeholder of a turn (plain replace: no other braces touched)."""
+    return text.replace("{receipt_id}", str(receipt_id))
 
 
 def load_cases(path: Path) -> list[Case]:

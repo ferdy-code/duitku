@@ -27,6 +27,7 @@ def test_registry_schemas_hide_injected_args() -> None:
         "save_memory",
         "recall_memory",
         "forget_memory",
+        "parse_receipt",
     }
     for t in tools.values():
         assert not {"config", "tool_call_id", "user_id", "timezone"} & set(t.args)

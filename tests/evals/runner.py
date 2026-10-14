@@ -6,6 +6,7 @@ checkpointer, tools, slug loader are all injected).
 
 import asyncio
 import logging
+import tempfile
 import time
 import uuid
 from datetime import UTC, date, datetime
@@ -20,10 +21,11 @@ from psycopg import sql
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from tests.evals.cases import Case
+from tests.evals.cases import Case, fill_receipt_id
 from tests.evals.checks import Approval, DbRow, MemRow, Observed, check_case
 from tests.evals.report import CaseResult
 from tests.evals.seeds import sample_month
+from tests.fake_vision import FakeVision
 
 from duitku.agent.checkpointer import open_checkpointer
 from duitku.agent.graph import build_graph
@@ -36,6 +38,8 @@ from duitku.interfaces.trace import ModelStep
 from duitku.memory import store as memory_store
 from duitku.memory.embeddings import get_embedder, warm_up_embedder
 from duitku.memory.thresholds import dedupe_threshold
+from duitku.receipts.ingest import ingest_receipt
+from duitku.receipts.schema import ReceiptExtraction
 from duitku.tools import clock
 from duitku.tools.registry import build_tools
 
@@ -116,6 +120,17 @@ async def _seed(sm: async_sessionmaker[AsyncSession], user_id: uuid.UUID, case: 
         await s.commit()
 
 
+_STUB_PNG = b"\x89PNG\r\n\x1a\n" + b"eval-stub"  # the stubbed vision model never looks at it
+
+
+async def _seed_receipt(
+    sm: async_sessionmaker[AsyncSession], user_id: uuid.UUID, receipt_dir: Path
+) -> uuid.UUID:
+    return await ingest_receipt(
+        user_id, _STUB_PNG, sessionmaker=sm, receipt_dir=receipt_dir, max_bytes=10_000
+    )
+
+
 async def _read_memories(sm: async_sessionmaker[AsyncSession], user_id: uuid.UUID) -> list[MemRow]:
     q = text("SELECT kind, content FROM memories WHERE user_id = :u ORDER BY created_at, id")
     async with sm() as s:
@@ -169,10 +184,16 @@ async def run_case(case: Case) -> CaseResult:
     runner_log.addHandler(collect)
     original_now = clock.now
     clock.now = lambda: FIXED_NOW.astimezone(UTC)  # tools read the clock via this module attribute
+    vision = (
+        FakeVision(ReceiptExtraction.model_validate(case.seed.receipt.extraction))
+        if case.seed.receipt
+        else None
+    )
+    receipt_dir = tempfile.TemporaryDirectory(prefix="duitku-eval-receipts-")
     try:
         async with open_checkpointer(pg_url) as saver:
             graph = build_graph(
-                tools=build_tools(sm),
+                tools=build_tools(sm, vision=vision, receipt_dir=Path(receipt_dir.name)),
                 checkpointer=saver,
                 category_slugs=repo_slug_loader(sm),
                 now=lambda: FIXED_NOW,
@@ -181,6 +202,11 @@ async def run_case(case: Case) -> CaseResult:
             runner = TurnRunner(graph, sm)
             user = await runner.resolve_user(EVAL_TELEGRAM_ID, f"eval-{case.id}")
             await _seed(sm, user.user_id, case)
+            receipt_id = (
+                await _seed_receipt(sm, user.user_id, Path(receipt_dir.name))
+                if case.seed.receipt
+                else None
+            )
             steps: list[ModelStep] = []
             replies: list[str] = []
             failures: list[str] = []
@@ -188,7 +214,7 @@ async def run_case(case: Case) -> CaseResult:
             approvals: list[Approval] = []
             for turn in case.turns:
                 thread = f"eval:{case.id}:{turn.thread}"
-                res = await runner.run(thread, user, turn.user)
+                res = await runner.run(thread, user, fill_receipt_id(turn.user, receipt_id))
                 while res.pending is not None:  # paused for approval
                     n_rows = len(await _read_rows(sm, user.user_id))
                     approvals.append(Approval(str(res.pending["tool"]), n_rows))
@@ -213,6 +239,7 @@ async def run_case(case: Case) -> CaseResult:
         )
     finally:
         clock.now = original_now
+        receipt_dir.cleanup()
         runner_log.removeHandler(collect)
         await engine.dispose()
     failures += check_case(case, obs)

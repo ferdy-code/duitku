@@ -2,26 +2,58 @@
 Application / handler chain / Message objects run without any network."""
 
 import itertools
+import uuid
 from collections.abc import Awaitable, Callable
 from types import SimpleNamespace
 from typing import Any
 
 from telegram import Update
 from telegram.ext import Application, ExtBot
+from telegram.request import BaseRequest
 
 from duitku.interfaces.telegram.app import App, register
 
 TOKEN = "123456:TEST-TOKEN-NOT-REAL"
 
 
-class FakeBot(ExtBot[None]):
-    """Records every API call in `calls` as (endpoint, data). `fail` maps an endpoint to a list
-    of exceptions raised one per call (then calls succeed)."""
+class FakeRequest(BaseRequest):
+    """Serves file downloads from memory: `files` maps a Telegram file_id to its bytes."""
 
     def __init__(self) -> None:
-        super().__init__(TOKEN)
+        self.files: dict[str, bytes] = {}
+        self.downloads: list[str] = []
+
+    @property
+    def read_timeout(self) -> float | None:
+        return None
+
+    async def initialize(self) -> None:
+        return None
+
+    async def shutdown(self) -> None:
+        return None
+
+    async def do_request(self, *args: Any, **kwargs: Any) -> tuple[int, bytes]:
+        raise AssertionError("only file downloads go through the request object in tests")
+
+    async def retrieve(self, url: str, *args: Any, **kwargs: Any) -> bytes:  # pyright: ignore[reportIncompatibleMethodOverride]
+        file_id = url.rsplit("/", 1)[-1]
+        self.downloads.append(file_id)
+        return self.files[file_id]
+
+
+class FakeBot(ExtBot[None]):
+    """Records every API call in `calls` as (endpoint, data). `fail` maps an endpoint to a list
+    of exceptions raised one per call (then calls succeed). Files for `getFile` come from
+    `files` (file_id -> bytes); `reported_size` overrides the size getFile claims."""
+
+    def __init__(self) -> None:
+        request = FakeRequest()
+        super().__init__(TOKEN, request=request)
+        self._fake_request = request
         self._calls: list[tuple[str, dict[str, Any]]] = []
         self._fail: dict[str, list[Exception]] = {}
+        self._reported_size: dict[str, int] = {}
 
     async def _do_post(self, endpoint: str, data: dict[str, Any], **_: Any) -> Any:  # pyright: ignore[reportIncompatibleMethodOverride]
         self._calls.append((endpoint, dict(data)))
@@ -29,6 +61,15 @@ class FakeBot(ExtBot[None]):
             raise self._fail[endpoint].pop(0)
         if endpoint == "getMe":
             return {"id": 1, "is_bot": True, "first_name": "B", "username": "b_bot"}
+        if endpoint == "getFile":
+            fid = data["file_id"]
+            size = self._reported_size.get(fid, len(self._fake_request.files.get(fid, b"")))
+            return {
+                "file_id": fid,
+                "file_unique_id": f"u-{fid}",
+                "file_size": size,
+                "file_path": f"files/{fid}",
+            }
         if endpoint == "sendMessage":
             return {"message_id": 1, "date": 0, "chat": {"id": data["chat_id"], "type": "private"}}
         return True
@@ -36,6 +77,18 @@ class FakeBot(ExtBot[None]):
     @property
     def calls(self) -> list[tuple[str, dict[str, Any]]]:
         return self._calls
+
+    @property
+    def files(self) -> dict[str, bytes]:
+        return self._fake_request.files
+
+    @property
+    def downloads(self) -> list[str]:
+        return self._fake_request.downloads
+
+    @property
+    def reported_size(self) -> dict[str, int]:
+        return self._reported_size
 
     @property
     def fail(self) -> dict[str, list[Exception]]:
@@ -72,8 +125,12 @@ class FakeRunner:
         boom: Exception | None = None,
         pending: dict[str, Any] | None = None,
         resumes: list[Any] | None = None,
+        paused: dict[str, Any] | None = None,
     ) -> None:
         self.reply, self.boom, self.pending = reply, boom, pending
+        self.paused = paused  # what `pending_approval` reports (a thread already waiting)
+        self.saved: list[bytes] = []
+        self.save_error: Exception | None = None
         self.resumes = resumes or []
         self.runs: list[tuple[str, str]] = []
         self.resume_calls: list[tuple[str, str]] = []
@@ -82,6 +139,15 @@ class FakeRunner:
     async def resolve_user(self, telegram_user_id: int, display_name: str | None = None) -> Any:
         self.resolved.append(telegram_user_id)
         return object()
+
+    async def pending_approval(self, thread_id: str, user: Any) -> dict[str, Any] | None:
+        return self.paused
+
+    async def save_receipt(self, user: Any, data: bytes) -> uuid.UUID:
+        if self.save_error:
+            raise self.save_error
+        self.saved.append(data)
+        return uuid.UUID(int=len(self.saved))
 
     async def run(self, thread_id: str, user: Any, message: str) -> Any:
         self.runs.append((thread_id, message))
@@ -168,3 +234,60 @@ def callback_update(
     if data is not None:
         query["data"] = data
     return Update.de_json({"update_id": next(_ids), "callback_query": query}, bot)
+
+
+def photo_update(
+    bot: FakeBot,
+    *,
+    caption: str | None = None,
+    user_id: int = 1,
+    chat_type: str = "private",
+    sizes: list[tuple[str, int, int, int | None]] | None = None,
+) -> Update:
+    """A photo message; `sizes` = (file_id, width, height, file_size), default small + large."""
+    sizes = sizes or [("ph_s", 90, 90, 900), ("ph_l", 1280, 960, 9000)]
+    msg: dict[str, Any] = {
+        "message_id": next(_ids),
+        "date": 0,
+        "chat": {"id": user_id, "type": chat_type},
+        "from": {"id": user_id, "is_bot": False, "first_name": "Tester"},
+        "photo": [
+            {
+                "file_id": fid,
+                "file_unique_id": f"u-{fid}",
+                "width": w,
+                "height": h,
+                **({"file_size": sz} if sz is not None else {}),
+            }
+            for fid, w, h, sz in sizes
+        ],
+    }
+    if caption is not None:
+        msg["caption"] = caption
+    return Update.de_json({"update_id": next(_ids), "message": msg}, bot)
+
+
+def document_update(
+    bot: FakeBot,
+    *,
+    mime: str | None,
+    file_id: str = "doc1",
+    file_size: int | None = 1000,
+    user_id: int = 1,
+    caption: str | None = None,
+) -> Update:
+    doc: dict[str, Any] = {"file_id": file_id, "file_unique_id": f"u-{file_id}"}
+    if mime is not None:
+        doc["mime_type"] = mime
+    if file_size is not None:
+        doc["file_size"] = file_size
+    msg: dict[str, Any] = {
+        "message_id": next(_ids),
+        "date": 0,
+        "chat": {"id": user_id, "type": "private"},
+        "from": {"id": user_id, "is_bot": False, "first_name": "Tester"},
+        "document": doc,
+    }
+    if caption is not None:
+        msg["caption"] = caption
+    return Update.de_json({"update_id": next(_ids), "message": msg}, bot)

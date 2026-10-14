@@ -17,6 +17,7 @@ from telegram.ext import (
 from duitku.interfaces.telegram.approval import CALLBACK_PATTERN, on_approval, on_batal
 from duitku.interfaces.telegram.guards import RateLimiter, make_guard
 from duitku.interfaces.telegram.handlers import on_error, on_help, on_start, on_text
+from duitku.interfaces.telegram.receipts import on_receipt
 
 type App = Application[Any, Any, Any, Any, Any, Any]
 
@@ -41,5 +42,7 @@ def register(
     app.add_handler(CommandHandler("batal", on_batal))
     app.add_handler(CallbackQueryHandler(on_approval, pattern=CALLBACK_PATTERN))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
+    # Photos and documents (any document: a non-image one gets a polite refusal in the handler).
+    app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, on_receipt))
     app.add_error_handler(on_error)
     return app

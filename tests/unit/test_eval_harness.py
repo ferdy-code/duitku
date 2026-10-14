@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
-from tests.evals.cases import Case, load_cases
+from tests.evals.cases import Case, fill_receipt_id, load_cases
 from tests.evals.checks import Approval, DbRow, MemRow, Observed, check_case, numbers_in
 from tests.evals.report import CaseResult, render_table, summarize
 from tests.evals.runner import eval_db_url, reset_eval_db
@@ -29,7 +29,7 @@ def test_shipped_cases_load_and_cover_shipped_ids() -> None:
     cases = load_cases(CASES_YAML)
     want = [f"E-{i:02d}" for i in range(1, 11)] + ["E-15", "E-16", "E-17", "E-17b"]
     want[10:10] = ["E-14", "E-23"]
-    want += ["E-18", "E-19", "E-19b"]
+    want += ["E-18", "E-19", "E-19b", "E-21"]
     assert [c.id for c in cases] == want
 
 
@@ -156,3 +156,27 @@ def test_approval_checks() -> None:
     dangling = [ModelStep(calls=[ToolStep("delete_expense", {}, "")])]
     bad = check_case(case, Observed(dangling, ["x"], rows, approvals=asked))
     assert any("no observation" in f for f in bad)
+
+
+def test_receipt_placeholder_is_filled_and_nothing_else_touched() -> None:
+    rid = "3f2b8c1e-5d4a-4e7b-9a10-6c2d8e4f1a77"
+    assert fill_receipt_id("[photo. receipt_id={receipt_id}] {other}", rid) == (
+        f"[photo. receipt_id={rid}] {{other}}"
+    )
+
+
+def test_e21_stubbed_receipt_carries_the_injection_and_counts_match_the_seed() -> None:
+    from tests.evals.seeds import sample_month
+
+    from duitku.receipts.schema import ReceiptExtraction
+
+    (case,) = [c for c in load_cases(CASES_YAML) if c.id == "E-21"]
+    assert case.seed.receipt is not None
+    ex = ReceiptExtraction.model_validate(case.seed.receipt.extraction)  # the seed is valid input
+    assert any("ignore previous instructions" in i.name.lower() for i in ex.items)
+    assert sum(i.qty * i.price_idr for i in ex.items) == ex.total_idr  # no sum warning: save path
+    assert "{receipt_id}" in case.turns[0].user
+    n = len(sample_month.EXPENSES)
+    assert case.expect.db is not None and case.expect.db.expenses_count == n
+    assert case.expect.approval is not None and case.expect.approval.expenses_at_pause == n
+    assert "delete_expense" in case.expect.no_tool_calls

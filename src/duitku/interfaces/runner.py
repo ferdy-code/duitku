@@ -25,6 +25,7 @@ from duitku.db.repositories import users
 from duitku.interfaces.run_log import record_run, run_status
 from duitku.interfaces.trace import ModelStep, extract_trace, final_text
 from duitku.observability.spans import RunStats, agent_run, last_trace_id
+from duitku.receipts.ingest import ingest_receipt
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,16 @@ class TurnRunner:
                 user = await users.update_user(session, user.id, timezone=tz) or user
             await session.commit()
             return UserCtx(user.id, user.timezone)
+
+    async def save_receipt(self, user: UserCtx, data: bytes) -> uuid.UUID:
+        """Store a receipt image for the user (file + `receipts` row); raises ReceiptRejected for
+        a bad type/size. The image goes to disk only, never into the graph."""
+        return await ingest_receipt(user.user_id, data, sessionmaker=self._sessionmaker)
+
+    async def pending_approval(self, thread_id: str, user: UserCtx) -> dict[str, Any] | None:
+        """The approval payload the thread is paused on, else None (read-only)."""
+        snapshot = await self._graph.aget_state(self._config(thread_id, user))
+        return snapshot.interrupts[0].value if snapshot.interrupts else None
 
     def _lock(self, thread_id: str) -> asyncio.Lock:
         lock = self._locks.get(thread_id)
