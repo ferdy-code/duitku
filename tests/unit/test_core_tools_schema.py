@@ -21,6 +21,7 @@ def test_registry_schemas_hide_injected_args() -> None:
         "add_expense",
         "query_expenses",
         "resolve_period",
+        "compare_amounts",
         "update_expense",
         "delete_expense",
         "get_exchange_rate",

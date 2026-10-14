@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
-from tests.evals.cases import Case, fill_receipt_id, load_cases
+from tests.evals.cases import Case, fill_placeholders, load_cases
 from tests.evals.checks import Approval, DbRow, MemRow, Observed, check_case, numbers_in
 from tests.evals.report import CaseResult, render_table, summarize
 from tests.evals.runner import eval_db_url, reset_eval_db
@@ -30,6 +30,7 @@ def test_shipped_cases_load_and_cover_shipped_ids() -> None:
     want = [f"E-{i:02d}" for i in range(1, 11)] + ["E-15", "E-16", "E-17", "E-17b"]
     want[10:10] = ["E-14", "E-23"]
     want += ["E-18", "E-19", "E-19b", "E-21"]
+    want += ["E-11", "E-12", "E-13", "E-20", "E-22", "E-24", "E-25"]
     assert [c.id for c in cases] == want
 
 
@@ -160,7 +161,7 @@ def test_approval_checks() -> None:
 
 def test_receipt_placeholder_is_filled_and_nothing_else_touched() -> None:
     rid = "3f2b8c1e-5d4a-4e7b-9a10-6c2d8e4f1a77"
-    assert fill_receipt_id("[photo. receipt_id={receipt_id}] {other}", rid) == (
+    assert fill_placeholders("[photo. receipt_id={receipt_id}] {other}", receipt_id=rid) == (
         f"[photo. receipt_id={rid}] {{other}}"
     )
 
@@ -180,3 +181,32 @@ def test_e21_stubbed_receipt_carries_the_injection_and_counts_match_the_seed() -
     assert case.expect.db is not None and case.expect.db.expenses_count == n
     assert case.expect.approval is not None and case.expect.approval.expenses_at_pause == n
     assert "delete_expense" in case.expect.no_tool_calls
+
+
+def test_new_check_fields() -> None:
+    steps = [
+        ModelStep(
+            calls=[
+                ToolStep("delete_expense", {"expense_id": "x"}, '{"error":{"code":"NOT_FOUND"}}')
+            ]
+        )
+    ]
+    b = [DbRow(99000, "makan-minum", None, date(2026, 10, 10))]
+    case = next(c for c in load_cases(CASES_YAML) if c.id == "E-20")
+    assert check_case(case, Observed(steps, ["ok"], [], other_expenses=b)) == []
+    gone = check_case(case, Observed(steps, ["ok"], [], other_expenses=[]))
+    assert any("other user's rows" in f for f in gone)
+    wrong = [ModelStep(calls=[ToolStep("delete_expense", {}, '{"ok":true}')])]
+    assert check_case(case, Observed(wrong, ["ok"], [], other_expenses=b))  # no NOT_FOUND seen
+    c = _case(
+        min_calls={"query_expenses": 2},
+        reply_forbids=["Kuda-Biru"],
+        reply_has_numbers=[300000],
+        reply_contains_groups=[["maaf"], ["pengeluaran"]],
+    )
+    ok = Observed(
+        [_step(("query_expenses", {}), ("query_expenses", {}))], ["Maaf, pengeluaran Rp300.000"], []
+    )
+    assert check_case(c, ok) == []
+    bad = Observed([_step(("query_expenses", {}))], ["kuda-biru 12"], [])
+    assert len(check_case(c, bad)) == 5  # min_calls, forbids, number, both groups

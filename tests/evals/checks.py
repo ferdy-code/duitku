@@ -38,6 +38,7 @@ class Observed:
     range_total: int | None = None  # SQL reference total for expect.reply_total_of_range
     memories: list[MemRow] = field(default_factory=lambda: list[MemRow]())  # oldest first
     approvals: list[Approval] = field(default_factory=lambda: list[Approval]())  # pauses seen
+    other_expenses: list[DbRow] = field(default_factory=lambda: list[DbRow]())  # user B, live
 
 
 def numbers_in(text: str) -> set[int]:
@@ -52,8 +53,12 @@ def _arg_matches(actual: Any, want: Any) -> bool:
 
 
 def _call_matches(call: ToolStep, want: ToolExpect) -> bool:
-    return call.name == want.name and all(
-        k in call.args and _arg_matches(call.args[k], v) for k, v in want.args_contains.items()
+    return (
+        call.name == want.name
+        and all(
+            k in call.args and _arg_matches(call.args[k], v) for k, v in want.args_contains.items()
+        )
+        and (want.observation_contains or "").lower() in call.observation.lower()
     )
 
 
@@ -130,6 +135,10 @@ def check_case(case: Case, obs: Observed) -> list[str]:
         n = sum(c.name == name for c in calls)
         if n > limit:
             bad.append(f"{name} called {n}x (max {limit})")
+    for name, floor in exp.min_calls.items():
+        n = sum(c.name == name for c in calls)
+        if n < floor:
+            bad.append(f"{name} called {n}x (min {floor})")
     if len(obs.steps) > exp.max_steps:
         bad.append(f"{len(obs.steps)} model steps (max {exp.max_steps})")
     if exp.db is not None:
@@ -144,6 +153,10 @@ def check_case(case: Case, obs: Observed) -> list[str]:
             count is None or 0 not in ([count] if isinstance(count, int) else count)
         ):
             bad.append("expected an expense row, DB has none")
+        if exp.db.other_user_amounts is not None:
+            got = sorted(r.amount_idr for r in obs.other_expenses)
+            if got != sorted(exp.db.other_user_amounts):
+                bad.append(f"other user's rows {got} != seeded {sorted(exp.db.other_user_amounts)}")
     if exp.approval is not None:
         hits = [a for a in obs.approvals if a.tool == exp.approval.tool]
         if not hits:
@@ -164,6 +177,14 @@ def check_case(case: Case, obs: Observed) -> list[str]:
         s.lower() in reply.lower() for s in exp.reply_contains_any
     ):
         bad.append(f"reply mentions none of {exp.reply_contains_any}")
+    low = reply.lower()
+    bad += [
+        f"reply mentions none of {g}"
+        for g in exp.reply_contains_groups
+        if not any(x.lower() in low for x in g)
+    ]
+    bad += [f"reply contains forbidden {x!r}" for x in exp.reply_forbids if x.lower() in low]
+    bad += [f"reply lacks number {n}" for n in exp.reply_has_numbers if n not in numbers_in(reply)]
     if exp.reply_total_of_range is not None:
         if obs.range_total is None:
             bad.append("harness bug: reference total missing")

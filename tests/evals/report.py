@@ -18,6 +18,7 @@ class CaseResult:
     input_tokens: int = 0
     output_tokens: int = 0
     latency_s: float = 0.0
+    replies: list[str] = field(default_factory=lambda: list[str]())  # agent text, per turn
     calls: list[str] = field(default_factory=lambda: list[str]())  # 'name(args) -> envelope'
 
 

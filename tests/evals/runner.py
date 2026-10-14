@@ -21,7 +21,7 @@ from psycopg import sql
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from tests.evals.cases import Case, fill_receipt_id
+from tests.evals.cases import Case, fill_placeholders
 from tests.evals.checks import Approval, DbRow, MemRow, Observed, check_case
 from tests.evals.report import CaseResult
 from tests.evals.seeds import sample_month
@@ -32,7 +32,7 @@ from duitku.agent.graph import build_graph
 from duitku.agent.nodes import repo_slug_loader
 from duitku.config import get_settings
 from duitku.db.engine import make_engine, make_sessionmaker
-from duitku.db.repositories import categories, expenses
+from duitku.db.repositories import categories, expenses, memories
 from duitku.interfaces.runner import TurnRunner
 from duitku.interfaces.trace import ModelStep
 from duitku.memory import store as memory_store
@@ -48,6 +48,7 @@ EVAL_TZ = ZoneInfo("Asia/Jakarta")
 # docs/EVALS.md: every case runs at Monday 2026-10-12 10:00 Asia/Jakarta.
 FIXED_NOW = datetime(2026, 10, 12, 10, 0, tzinfo=EVAL_TZ)
 EVAL_TELEGRAM_ID = 700_000_001
+OTHER_TELEGRAM_ID = 700_000_002  # user B of two-user safety cases
 SEED_FIXTURES = {"sample_month": sample_month.EXPENSES}
 
 
@@ -109,6 +110,10 @@ async def _seed(sm: async_sessionmaker[AsyncSession], user_id: uuid.UUID, case: 
                     merchant=e.merchant,
                 )
         for m in case.seed.memories:  # real embeddings, same path as the save_memory tool
+            if m.unvalidated:  # e.g. an injection the sensitive-data guard would refuse to store
+                vec = await get_embedder().embed_passage(m.content)
+                await memories.add_memory(s, user_id, m.kind, m.content, vec)
+                continue
             await memory_store.save(
                 s,
                 user_id,
@@ -118,6 +123,29 @@ async def _seed(sm: async_sessionmaker[AsyncSession], user_id: uuid.UUID, case: 
                 dedupe_threshold=dedupe_threshold(),
             )
         await s.commit()
+
+
+async def _seed_other_user(
+    sm: async_sessionmaker[AsyncSession], user_id: uuid.UUID, case: Case
+) -> uuid.UUID | None:
+    """Insert user B's expenses; returns the id of the first one (for `{other_expense_id}`)."""
+    first: uuid.UUID | None = None
+    async with sm() as s:
+        for e in case.seed.other_user_expenses:
+            cat = await categories.get_by_slug(s, user_id, e.category)
+            assert cat is not None, f"seed category {e.category} missing"
+            row = await expenses.insert_expense(
+                s,
+                user_id,
+                amount_idr=e.amount_idr,
+                category_id=cat.id,
+                occurred_at=datetime.combine(date(2026, 10, 10), dtime(12, 0), EVAL_TZ),
+                source="text",
+                merchant=e.merchant,
+            )
+            first = first or row.expense.id
+        await s.commit()
+    return first
 
 
 _STUB_PNG = b"\x89PNG\r\n\x1a\n" + b"eval-stub"  # the stubbed vision model never looks at it
@@ -202,6 +230,12 @@ async def run_case(case: Case) -> CaseResult:
             runner = TurnRunner(graph, sm)
             user = await runner.resolve_user(EVAL_TELEGRAM_ID, f"eval-{case.id}")
             await _seed(sm, user.user_id, case)
+            other_uid = other_id = None
+            if case.seed.other_user_expenses:
+                other_uid = (
+                    await runner.resolve_user(OTHER_TELEGRAM_ID, f"eval-{case.id}-b")
+                ).user_id
+                other_id = await _seed_other_user(sm, other_uid, case)
             receipt_id = (
                 await _seed_receipt(sm, user.user_id, Path(receipt_dir.name))
                 if case.seed.receipt
@@ -214,7 +248,10 @@ async def run_case(case: Case) -> CaseResult:
             approvals: list[Approval] = []
             for turn in case.turns:
                 thread = f"eval:{case.id}:{turn.thread}"
-                res = await runner.run(thread, user, fill_receipt_id(turn.user, receipt_id))
+                text_in = fill_placeholders(
+                    turn.user, receipt_id=receipt_id, other_expense_id=other_id
+                )
+                res = await runner.run(thread, user, text_in)
                 while res.pending is not None:  # paused for approval
                     n_rows = len(await _read_rows(sm, user.user_id))
                     approvals.append(Approval(str(res.pending["tool"]), n_rows))
@@ -236,6 +273,7 @@ async def run_case(case: Case) -> CaseResult:
             total,
             await _read_memories(sm, user.user_id),
             approvals,
+            await _read_rows(sm, other_uid) if other_uid else [],
         )
     finally:
         clock.now = original_now
@@ -252,5 +290,6 @@ async def run_case(case: Case) -> CaseResult:
         input_tokens=sum(s.input_tokens or 0 for s in steps),
         output_tokens=sum(s.output_tokens or 0 for s in steps),
         latency_s=round(latency, 2),
+        replies=replies,
         calls=[f"{c.name}({c.args}) -> {c.observation}" for s in steps for c in s.calls],
     )

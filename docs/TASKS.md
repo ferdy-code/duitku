@@ -86,7 +86,7 @@ Goal: understand tool calling from first principles before using a framework.
   Read: `agent.md`. AC: test green and documented.
 - [ ] **T-406 Observability.** `observability/tracing.py`: spans, metrics, `agent_runs` rows, redaction per `LOG_CONTENT`.
   Read: `interfaces-ops.md`. AC: one conversation's trace is complete in local SigNoz; `agent_runs` has tokens + duration.
-- [ ] **T-407 Full eval.** All cases in `EVALS.md` incl. safety/injection.
+- [x] **T-407 Full eval.** All cases in `EVALS.md` incl. safety/injection.
   Read: `EVALS.md`. AC: ≥ 90% total (G2); section E (safety) 100%.
 - [ ] **T-408 Deploy.** Multi-stage `Dockerfile` (non-root), `app` service in `docker-compose.yml`, migrations on deploy, scheduled `pg_dump` backups, daily job enforcing `RECEIPT_RETENTION_DAYS`.
   AC: bot runs 7 days on VPS without manual restart; backup restore tested once.

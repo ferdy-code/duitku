@@ -15,6 +15,7 @@ class _Strict(BaseModel):
 class SeedMemory(_Strict):
     kind: str
     content: str
+    unvalidated: bool = False  # insert directly, skipping the save_memory guards (poisoned data)
 
 
 class SeedReceipt(_Strict):
@@ -24,7 +25,15 @@ class SeedReceipt(_Strict):
     extraction: dict[str, Any]
 
 
+class SeedOtherExpense(_Strict):
+    category: str
+    amount_idr: int
+    merchant: str | None = None
+
+
 class Seed(_Strict):
+    # Expenses of a SECOND user (B). A turn can name one with the `{other_expense_id}` placeholder.
+    other_user_expenses: list[SeedOtherExpense] = []
     receipt: SeedReceipt | None = None
     fixture: str | None = None  # name in runner.SEED_FIXTURES
     memories: list[SeedMemory] = []  # saved through memory.store.save with the REAL embedder
@@ -42,6 +51,7 @@ class ToolExpect(_Strict):
     name: str
     # string -> case-insensitive substring of the actual arg; anything else -> equality
     args_contains: dict[str, Any] = {}
+    observation_contains: str | None = None  # case-insensitive substring of the tool's observation
 
 
 class ExpenseExpect(_Strict):
@@ -54,6 +64,7 @@ class ExpenseExpect(_Strict):
 class DbExpect(_Strict):
     expenses_count: int | list[int] | None = None  # list = any of
     expense: ExpenseExpect | None = None  # checked against the oldest stored row
+    other_user_amounts: list[int] | None = None  # user B's live rows, sorted amounts, exactly
 
 
 class MemoryExpect(_Strict):
@@ -75,6 +86,7 @@ class Expect(_Strict):
     tool_calls: list[ToolExpect] = []  # must appear in this order (other calls may interleave)
     no_tool_calls: list[str] = []
     max_calls: dict[str, int] = {}  # tool name -> max number of calls
+    min_calls: dict[str, int] = {}  # tool name -> min number of calls
     db: DbExpect | None = None
     reply_asks: bool = False  # reply contains a question mark (asks for clarification)
     reply_no_question: bool = False  # reply contains no question mark
@@ -82,6 +94,9 @@ class Expect(_Strict):
     approval: ApprovalExpect | None = None
     all_calls_answered: bool = False  # every tool call of every step got an observation
     reply_contains_any: list[str] = []  # case-insensitive
+    reply_contains_groups: list[list[str]] = []  # every group needs one case-insensitive hit
+    reply_forbids: list[str] = []  # case-insensitive; none may appear in the reply
+    reply_has_numbers: list[int] = []  # integers (1.200.000 style) the reply must state
     reply_total_of_range: tuple[date, date] | None = None  # reply states SQL total of this range
     max_steps: int = Field(gt=0)  # model calls over all turns
 
@@ -94,9 +109,11 @@ class Case(_Strict):
     expect: Expect
 
 
-def fill_receipt_id(text: str, receipt_id: object) -> str:
-    """Replace the `{receipt_id}` placeholder of a turn (plain replace: no other braces touched)."""
-    return text.replace("{receipt_id}", str(receipt_id))
+def fill_placeholders(text: str, **values: object) -> str:
+    """Replace `{name}` placeholders of a turn (plain replace: no other braces touched)."""
+    for name, value in values.items():
+        text = text.replace("{" + name + "}", str(value))
+    return text
 
 
 def load_cases(path: Path) -> list[Case]:
